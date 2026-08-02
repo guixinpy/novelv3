@@ -151,3 +151,55 @@ def test_tool_definition_exposes_handler_metadata():
     definition = registry.get("read_chapter")
     assert isinstance(definition, ToolDefinition)
     assert definition.name == "read_chapter"
+
+
+# ── T2 R1: 参数校验错误加 few-shot 示例 ──
+
+
+@pytest.mark.asyncio
+async def test_missing_required_argument_includes_example():
+    registry = make_registry()
+    result = await registry.execute("read_chapter", {}, ToolContext(project_id=1))
+    assert result.is_error
+    assert "参数示例" in result.error
+    assert '"chapter_index": 1' in result.error
+
+
+@pytest.mark.asyncio
+async def test_type_error_includes_example():
+    registry = make_registry()
+    result = await registry.execute("read_chapter", {"chapter_index": "三"}, ToolContext(project_id=1))
+    assert result.is_error
+    assert "参数示例" in result.error
+    assert '"chapter_index": 1' in result.error
+
+
+@pytest.mark.asyncio
+async def test_unknown_argument_includes_example():
+    registry = make_registry()
+    result = await registry.execute("read_chapter", {"chapter_index": 1, "foo": 1}, ToolContext(project_id=1))
+    assert result.is_error
+    assert "foo" in result.error
+    assert "参数示例" in result.error
+    assert "chapter_index" in result.error
+
+
+def test_example_arguments_pure_function():
+    from app.agent.tooling import _example_arguments
+
+    params = {
+        "type": "object",
+        "properties": {
+            "chapter_index": {"type": "integer"},
+            "title": {"type": "string"},
+            "ratio": {"type": "number"},
+            "flag": {"type": "boolean"},
+            "tags": {"type": "array"},
+            "extra": {"type": "object"},
+        },
+        "required": ["chapter_index", "title"],
+    }
+    example = _example_arguments(params)
+    assert example == {"chapter_index": 1, "title": "title"}
+    # 空 properties 不炸
+    assert _example_arguments({"type": "object", "properties": {}, "required": []}) == {}

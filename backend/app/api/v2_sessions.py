@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.agent.approval import ApprovalGate
+from app.agent.providers import build_provider as _build_provider
 from app.agent.events import (
     ApprovalPending,
     AssistantDelta,
@@ -23,9 +24,8 @@ from app.agent.events import (
 )
 from app.agent.harness import AgentHarness, HarnessConfig
 from app.agent.providers.base import Provider
-from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.tooling import ToolContext
-from app.config import load_api_key
+from app.core.project_snapshot import build_project_snapshot
 from app.db import DATA_DIR, get_db
 from app.models import Project
 from app.tools.registry import build_default_registry
@@ -61,10 +61,10 @@ _active_gates: dict[str, ApprovalGate] = {}
 
 
 def build_provider() -> Provider:
-    key = load_api_key()
-    if not key:
-        raise HTTPException(status_code=503, detail="DeepSeek API key 未配置")
-    return DeepSeekProvider(api_key=key)
+    try:
+        return _build_provider()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _meta_path(session_id: str) -> Path:
@@ -163,15 +163,19 @@ def send_message(
     gate = ApprovalGate(registry=registry)
     _active_gates[session_id] = gate
 
+    project_id = meta["project_id"]
+
     harness = AgentHarness(
         session_id=session_id,
         session_dir=SESSIONS_DIR,
         provider=build_provider(),
         registry=registry,
-        tool_context=ToolContext(project_id=meta["project_id"], session_id=session_id, db=db),
+        tool_context=ToolContext(project_id=project_id, session_id=session_id, db=db),
         config=HarnessConfig(system_prompt=SYSTEM_PROMPT),
         before_tool_call=gate.before_tool_call,
         approval_gate=gate,
+        # T6 R1：回合级项目状态快照（API 层注入，保持内核领域无关）
+        snapshot_provider=lambda: build_project_snapshot(db, project_id),
     )
 
     async def event_stream():

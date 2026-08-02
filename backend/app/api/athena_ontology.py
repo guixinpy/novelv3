@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.encoders import jsonable_encoder
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -16,8 +15,6 @@ from app.models import (
     WorldResource,
     WorldRule,
 )
-from app.schemas import SetupOut
-from app.api.dialog_utils import execute_agent_api_tool
 
 router = APIRouter()
 DEFAULT_ONTOLOGY_ENTITY_LIMIT = 500
@@ -25,8 +22,6 @@ DEFAULT_ONTOLOGY_RELATION_LIMIT = 1000
 DEFAULT_ONTOLOGY_RULE_LIMIT = 500
 DEFAULT_ONTOLOGY_TOPOLOGY_NODE_LIMIT = 200
 DEFAULT_ONTOLOGY_TOPOLOGY_EDGE_LIMIT = 500
-ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION = "phase67.athena_ontology_agent.v1"
-ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT = "athena_ontology_generate"
 
 
 @router.get("/ontology")
@@ -257,42 +252,6 @@ def get_ontology_rules(
         .all()
     )
     return [{"id": r.id, "rule_id": r.rule_id, "description": r.statement, "scope": r.scope} for r in rules]
-
-
-@router.post("/ontology/generate")
-async def generate_ontology(project_id: str, db: Session = Depends(get_db)):
-    require_project(db, project_id)
-    result = await execute_agent_api_tool(
-        db,
-        project_id=project_id,
-        entrypoint=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
-        version=ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
-        source=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
-        action_type="generate_setup",
-        tool_name="generate_setup",
-        goal="通过 Athena 设定入口生成项目设定",
-    )
-    run = result.run
-    if run.status != "success":
-        status_code = 400 if run.error == "API key not configured" else 500
-        raise HTTPException(status_code=status_code, detail=run.error or "Agent setup generation failed")
-
-    setup = _latest_project_setup(db, project_id)
-    if not setup:
-        raise HTTPException(status_code=500, detail="Agent setup generation completed without setup output")
-    body = jsonable_encoder(SetupOut.model_validate(setup))
-    body["agent_run_id"] = run.id
-    body["control_plane"] = result.control_plane
-    return body
-
-
-def _latest_project_setup(db: Session, project_id: str) -> Setup | None:
-    return (
-        db.query(Setup)
-        .filter(Setup.project_id == project_id)
-        .order_by(Setup.created_at.desc(), Setup.id.desc())
-        .first()
-    )
 
 
 @router.post("/ontology/import-setup")

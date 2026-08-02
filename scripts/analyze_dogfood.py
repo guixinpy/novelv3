@@ -14,8 +14,15 @@ import csv
 import glob
 import json
 import os
+import re
 import sqlite3
+from collections import Counter
 from datetime import datetime
+
+# T7 R1：幻觉工具名解析（「工具 X 不存在」）
+_HALLUCINATED_TOOL_RE = re.compile(r"工具\s*([A-Za-z_][A-Za-z0-9_]*)\s*不存在")
+# T7 R4：压缩摘要是否保留可行动的写作信息
+_WRITING_CONTEXT_MARKERS = ("最近写入章节", "质量自检", "最近写作上下文")
 
 
 def analyze(project_id: str, out_dir: str) -> dict:
@@ -57,7 +64,10 @@ def analyze(project_id: str, out_dir: str) -> dict:
         log_path = f"data/agent_sessions/{sid}.jsonl"
         if not os.path.exists(log_path):
             continue
-        session = {"session_id": sid, "entries": 0, "turns": [], "compactions": [], "errors": []}
+        session = {
+            "session_id": sid, "entries": 0, "turns": [], "compactions": [], "errors": [],
+            "tool_messages": 0, "hallucinated_tools": [], "chapter_quality": [],
+        }
         with open(log_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -77,14 +87,35 @@ def analyze(project_id: str, out_dir: str) -> dict:
                         "completion_tokens": d.get("completion_tokens"),
                     })
                 elif e.get("type") == "compaction":
+                    summary = d.get("summary") or ""
+                    before = d.get("before_count") or 0
+                    after = d.get("after_count") or 0
                     session["compactions"].append({
-                        "before_count": d.get("before_count"),
-                        "after_count": d.get("after_count"),
+                        "before_count": before,
+                        "after_count": after,
                         "usage_pct": d.get("usage_pct"),
-                        "summary": (d.get("summary") or "")[:300],
+                        "saving_ratio": round(1 - after / before, 3) if before else 0.0,
+                        "has_writing_context": any(m in summary for m in _WRITING_CONTEXT_MARKERS),
+                        "summary": summary[:300],
                     })
                 elif e.get("type") == "message" and d.get("role") == "tool":
+                    session["tool_messages"] += 1
                     content = str(d.get("content", ""))
+                    # T7 R1：幻觉工具名
+                    m = _HALLUCINATED_TOOL_RE.search(content)
+                    if m:
+                        session["hallucinated_tools"].append(m.group(1))
+                    # T7 R3：每章质量自检（check_chapter_quality / check_chapter_format 返回）
+                    try:
+                        payload = json.loads(content)
+                    except (json.JSONDecodeError, TypeError):
+                        payload = None
+                    if isinstance(payload, dict) and "quality" in payload:
+                        session["chapter_quality"].append({
+                            "chapter_index": payload.get("chapter_index"),
+                            "quality": payload["quality"],
+                            "issue_types": sorted({i.get("type") for i in payload.get("issues") or []}),
+                        })
                     if any(k in content for k in ("error", "失败", "不存在", "rolled back")):
                         session["errors"].append(content[:400])
         sessions.append(session)
@@ -92,6 +123,23 @@ def analyze(project_id: str, out_dir: str) -> dict:
 
     # 汇总
     word_counts = [c[2] for c in chapters]
+    all_hallucinated = [t for s in sessions for t in s["hallucinated_tools"]]
+    hallucinated_tools = [
+        {"name": name, "count": count}
+        for name, count in Counter(all_hallucinated).most_common()
+    ]
+    tool_message_total = sum(s["tool_messages"] for s in sessions)
+    unknown_tool_rate = (
+        round(len(all_hallucinated) / tool_message_total * 100, 2) if tool_message_total else 0.0
+    )
+    # 每章质量自检：一 章多检取最新
+    quality_by_chapter: dict[int, dict] = {}
+    for s in sessions:
+        for q in s["chapter_quality"]:
+            quality_by_chapter[q["chapter_index"]] = q
+    # 压缩摘要质量
+    all_compactions = [c for s in sessions for c in s["compactions"]]
+    compactions_with_context = sum(1 for c in all_compactions if c["has_writing_context"])
     report = {
         "project_id": project_id,
         "project_name": project[0] if project else None,
@@ -108,7 +156,21 @@ def analyze(project_id: str, out_dir: str) -> dict:
         "guard_trips": sum(
             1 for s in sessions for t in s["turns"] if t["stop_reason"] == "guard_tripped"
         ),
-        "compaction_count": sum(len(s["compactions"]) for s in sessions),
+        "compaction_count": len(all_compactions),
+        "compaction_quality": {
+            "count": len(all_compactions),
+            "with_writing_context": compactions_with_context,
+            "avg_saving_ratio": round(
+                sum(c["saving_ratio"] for c in all_compactions) / len(all_compactions), 3
+            ) if all_compactions else 0.0,
+        },
+        "hallucinated_tools": hallucinated_tools,
+        "unknown_tool_count": len(all_hallucinated),
+        "unknown_tool_rate": unknown_tool_rate,
+        "chapter_quality": [
+            {"chapter_index": idx, "quality": q["quality"], "issue_types": q["issue_types"]}
+            for idx, q in sorted(quality_by_chapter.items())
+        ],
         "total_prompt_tokens": sum(
             t["prompt_tokens"] or 0 for s in sessions for t in s["turns"]
         ),
@@ -149,6 +211,41 @@ def analyze(project_id: str, out_dir: str) -> dict:
         f"- 压缩次数：{report['compaction_count']}",
         f"- tokens：输入 {report['total_prompt_tokens']} / 输出 {report['total_completion_tokens']}",
         f"- 工具错误：{len(report['tool_errors'])}",
+        f"- 幻觉工具调用：{report['unknown_tool_count']} 次（工具消息中占 {report['unknown_tool_rate']}%）",
+        f"- 质量自检覆盖：{len(report['chapter_quality'])} 章",
+        f"- 压缩摘要含写作上下文：{report['compaction_quality']['with_writing_context']}/"
+        f"{report['compaction_quality']['count']}",
+        "",
+        "## 幻觉工具调用",
+        "",
+    ]
+    if report["hallucinated_tools"]:
+        md_lines += ["| 工具名 | 次数 |", "|---|---|"]
+        md_lines += [f"| {t['name']} | {t['count']} |" for t in report["hallucinated_tools"]]
+    else:
+        md_lines += ["无。"]
+    md_lines += [
+        "",
+        "## 每章质量自检",
+        "",
+        "| 章节 | 质量 | 问题类型 |",
+        "|---|---|---|",
+    ]
+    if report["chapter_quality"]:
+        md_lines += [
+            f"| Ch{q['chapter_index']} | {q['quality']} | {'、'.join(q['issue_types']) or '-'} |"
+            for q in report["chapter_quality"]
+        ]
+    else:
+        md_lines += ["（无质量自检记录）"]
+    md_lines += [
+        "",
+        "## 压缩摘要质量",
+        "",
+        f"- 压缩 {report['compaction_quality']['count']} 次，其中 "
+        f"{report['compaction_quality']['with_writing_context']} 次摘要保留了写作上下文"
+        f"（最近写入章节/质量自检/最近写作上下文）。",
+        f"- 平均节省比例：{report['compaction_quality']['avg_saving_ratio']:.1%}",
         "",
         "## 字数趋势（每 10 章窗口）",
         "",
@@ -187,7 +284,9 @@ def main() -> int:
     print(
         f"project={report['project_name']} chapters={report['total_chapters']} "
         f"words={report['total_words']} guards={report['guard_trips']} "
-        f"compactions={report['compaction_count']} tool_errors={len(report['tool_errors'])}"
+        f"compactions={report['compaction_count']} tool_errors={len(report['tool_errors'])} "
+        f"hallucinated={report['unknown_tool_count']}({report['unknown_tool_rate']}%) "
+        f"quality_checked={len(report['chapter_quality'])}"
     )
     print(f"report written to {args.out}")
     return 0

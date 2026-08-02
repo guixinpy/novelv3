@@ -6,7 +6,7 @@ from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
-from app.core.ai_service import AIService
+from app.agent.providers import build_provider
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.chapter_target import chapter_index_exceeds_target
 from app.core.longform_memory import refresh_longform_memory_for_chapter
@@ -16,8 +16,8 @@ from app.core.setup_projection import get_setup_character_projection
 from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Project, Setup
-from app.prompting.assembler import PromptAssembler
-from app.prompting.providers.chapter import (
+from app.core.chapter_utils import project_chapter_word_range
+from app.core.generation.chapter import (
     CHAPTER_CONTEXT_CHAR_BUDGET,
     SETUP_CHARACTERS_BLOCK_CHAR_LIMIT,
     SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT,
@@ -26,18 +26,15 @@ from app.prompting.providers.chapter import (
     build_chapter_prompt_variables,
     build_chapter_trace_context_blocks,
     chapter_max_tokens,
-    project_chapter_word_range,
 )
-from app.prompting.providers.storyline import SetupContextSnapshot
-from app.prompting.tracing import build_prompt_trace_metadata
+from app.core.generation.render import prompt_trace_metadata, render_prompt
+from app.core.prompt_budget import apply_context_budget
+from app.core.setup_context import SetupContextSnapshot
 from app.schemas import ChapterOut
-from app.api.dialog_utils import AgentApiToolRunResult, execute_agent_api_tool
 from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
 
-ai_service = AIService()
-prompt_assembler = PromptAssembler()
 FENCED_CHAPTER_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL)
 CHAPTER_HEADING_RE = re.compile(
     r"^\s{0,3}#{0,6}\s*第\s*[\d零〇一二两三四五六七八九十百千]+\s*章(?:\s|[：:、.．-]|$).*$"
@@ -48,14 +45,6 @@ CHAPTER_OUTLINE_MARKER_RE = re.compile(
 EMPTY_CHAPTER_CONTENT_ERROR = "Generated chapter content is empty after normalization"
 POST_GENERATION_WARNING_MESSAGE_CHARS = 500
 OUTLINE_LIKE_CHAPTER_WARNING_MESSAGE = "章节内容疑似大纲或摘要格式，建议改写为连续正文场景。"
-CHAPTER_AGENT_CONTROL_PLANE_VERSION = "phase69.chapter_agent.v1"
-CHAPTER_GENERATE_ENTRYPOINT = "chapter_generate"
-CHAPTER_GENERATION_ERROR_STATUS_CODES = {
-    "API key not configured": 400,
-    "Chapter index exceeds project target chapter count": 400,
-    "Setup not generated yet": 400,
-    EMPTY_CHAPTER_CONTENT_ERROR: 502,
-}
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -144,6 +133,7 @@ def _build_chapter_call_payload(
     chapter_index: int,
     extra_feedback: str,
 ) -> dict:
+    # 生成统一 v2：模板直接渲染 + 预算截断（原 PromptAssembler 装配链内联）
     prompt_context_blocks, trace_only_context_blocks = build_chapter_prompt_context_blocks(
         db,
         project,
@@ -152,24 +142,46 @@ def _build_chapter_call_payload(
         extra_feedback,
         max_context_chars=CHAPTER_CONTEXT_CHAR_BUDGET,
     )
-    build_result = prompt_assembler.build(
-        "chapter.generate",
+    rendered = render_prompt(
+        "generate_chapter",
         build_chapter_prompt_variables(project, setup, chapter_index),
-        context_blocks=prompt_context_blocks,
-        max_context_chars=CHAPTER_CONTEXT_CHAR_BUDGET,
     )
+    kept_blocks, budget_report = apply_context_budget(
+        prompt_context_blocks,
+        CHAPTER_CONTEXT_CHAR_BUDGET,
+    )
+    messages = [{
+        "role": "user",
+        "content": _message_content_with_context(rendered, kept_blocks),
+    }]
 
     return {
-        "messages": build_result.messages,
+        "messages": messages,
         "context_blocks": build_chapter_trace_context_blocks(
-            build_result.content,
-            build_result.context_blocks,
+            rendered,
+            kept_blocks,
             trace_only_context_blocks,
         ),
         "max_tokens": chapter_max_tokens(extra_feedback, project=project),
-        "trace_metadata": build_prompt_trace_metadata(build_result),
-        "rendered_prompt": build_result.content,
+        "trace_metadata": prompt_trace_metadata(
+            prompt_id="chapter.generate",
+            template_name="generate_chapter",
+            budget_report=budget_report,
+        ),
+        "rendered_prompt": rendered,
     }
+
+
+def _message_content_with_context(content: str, context_blocks: list[dict]) -> str:
+    """上下文块拼入消息内容（原 assembler._message_content_with_context 语义）。"""
+    if not context_blocks:
+        return content
+    parts = [content, "【上下文】"]
+    for block in context_blocks:
+        title = block.get("title") or block.get("key") or "context"
+        block_content = str(block.get("content", ""))
+        parts.append(f"【{title}】\n{block_content}")
+    return "\n\n".join(parts)
 
 
 def _safe_create_chapter_trace(
@@ -365,41 +377,6 @@ def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_
     return warnings
 
 
-@router.post("/{chapter_index}/generate", response_model=ChapterOut)
-async def generate_chapter(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
-    result = await execute_agent_api_tool(
-        db,
-        project_id=project_id,
-        entrypoint=CHAPTER_GENERATE_ENTRYPOINT,
-        version=CHAPTER_AGENT_CONTROL_PLANE_VERSION,
-        source=CHAPTER_GENERATE_ENTRYPOINT,
-        action_type="generate_chapter",
-        tool_name="generate_chapter",
-        goal=f"生成第{chapter_index}章正文",
-        params={"chapter_index": chapter_index},
-        extra_control_plane={"chapter_index": chapter_index},
-    )
-    _raise_if_agent_chapter_generation_failed(result)
-    chapter = db.query(ChapterContent).filter(
-        ChapterContent.project_id == project_id,
-        ChapterContent.chapter_index == chapter_index,
-    ).first()
-    if not chapter:
-        raise HTTPException(status_code=500, detail="Agent chapter generation completed without chapter output")
-    body = _chapter_out(db, chapter)
-    body["agent_run_id"] = result.run.id
-    body["control_plane"] = result.control_plane
-    return body
-
-
-def _raise_if_agent_chapter_generation_failed(result: AgentApiToolRunResult) -> None:
-    if result.run.status == "success":
-        return
-    detail = result.run.error or "Agent chapter generation failed"
-    status_code = CHAPTER_GENERATION_ERROR_STATUS_CODES.get(detail, 500)
-    raise HTTPException(status_code=status_code, detail=detail)
-
-
 async def create_or_replace_chapter(
     db: Session,
     project_id: str,
@@ -430,12 +407,17 @@ async def create_or_replace_chapter(
     start = time.time()
     WritingStateService(db).run_chapter(project_id, chapter_index)
     try:
-        result = await ai_service.complete(
-            payload["messages"],
-            temperature=0.7,
-            max_tokens=payload["max_tokens"],
-            model=project.ai_model or "deepseek-chat",
-        )
+        # v1 绞杀：LLM 调用统一走 v2 provider（非流式一次返回）
+        provider = build_provider()
+        try:
+            result = await provider.complete(
+                payload["messages"],
+                temperature=0.7,
+                max_tokens=payload["max_tokens"],
+                model=project.ai_model or "deepseek-chat",
+            )
+        finally:
+            await provider.close()
     except Exception as exc:
         WritingStateService(db).mark_error(project_id, str(exc))
         _safe_mark_chapter_trace_failed(
@@ -466,6 +448,9 @@ async def create_or_replace_chapter(
 
     word_count = count_words(generated_content)
     previous_word_count = int(existing.word_count or 0) if existing else 0
+    # v1 绞杀：token 统计在 ProviderResponse.usage（v2 provider 契约）
+    prompt_tokens = result.usage.prompt_tokens
+    completion_tokens = result.usage.completion_tokens
     if existing:
         chapter = existing
         chapter.title = title
@@ -473,8 +458,8 @@ async def create_or_replace_chapter(
         chapter.word_count = word_count
         chapter.status = "generated"
         chapter.model = result.model
-        chapter.prompt_tokens = result.prompt_tokens
-        chapter.completion_tokens = result.completion_tokens
+        chapter.prompt_tokens = prompt_tokens
+        chapter.completion_tokens = completion_tokens
         chapter.generation_time = elapsed
         chapter.temperature = 0.7
     else:
@@ -486,8 +471,8 @@ async def create_or_replace_chapter(
             word_count=word_count,
             status="generated",
             model=result.model,
-            prompt_tokens=result.prompt_tokens,
-            completion_tokens=result.completion_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             generation_time=elapsed,
             temperature=0.7,
         )

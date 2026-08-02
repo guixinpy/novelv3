@@ -90,11 +90,117 @@
 2. 决策 v1 旧生成管线（`ai_service` + 8 个 API）去留
 3. 扩展实体登记来源（Setups 角色不完整 → 正文/情节线提取）
 
-## 测试基线（2026-08-01 实测）
+## 2026-08-01 harness 系统化优化（任务 `08-01-harness-optimization`，T1-T7 全部完成）
 
-- 后端：586 passed, 0 failed（pytest 实测）
-- 前端：62 files / 485 tests, 0 failed（vitest 实测；死代码清理后 576→485）
+对 200 章实验暴露问题做系统化治理，7 个子任务独立 commit（`40a71a8a`→`7567e7af`）：
+
+| 子任务 | 内容 | 验证 |
+|---|---|---|
+| T1 内核健壮性 | before_tool_call 钩子异常 fail-closed 兜底；回合内工具错误自动注入「错误诊断+建议」；guard 触发立即结束回合（修复只 break 工具批的缺陷）；压缩重放测试矩阵 | 8 测试 |
+| T2 工具可靠性 | 参数校验错误附「参数示例」few-shot；`get_or_create_longform_memory` 统一 upsert（5 处接入）；plotline 标题规范（>40 字/含章号拒绝 + 命名模板）；query 前缀/模糊匹配 + 未命中回退最近开放线 | 11 测试 |
+| T3 终局与伏笔约束 | plan_arc define `must_resolve` 终局约束（metadata.endgame）；progress/check_quality_trend 卷尾 ≤5 章强制回收模式（禁止新增「更早/更深/更初」层级）；plotline 开放 >30 章 stale 提醒 | 7 测试 |
+| T4 输出格式守门员 | `check_chapter_format`：markdown `**` 残留/中文斜杠备选词/正文章题行/全角引号成对/半角标点 + 章末卡点（无钩子句式）；quality fail→重写 | 13 测试 |
+| T5 结构级重复检测 | `check_structure_repeat`：标题重复 + 结尾主题词指纹成团 ≥3 章 → 模板循环告警（换名城检测） | 6 测试 |
+| T6 上下文注入工程 | 回合级项目状态快照（章节/最近3章/活跃弧线/开放伏笔/事实表角色地点/格式规范，回调注入不持久化，CADR-005 合规）；压缩摘要追加「最近写作上下文」；query_memory 人物卡 author_explicit 优先 | 6 测试 |
+| T7 可观测性 | analyze_dogfood.py 补：幻觉工具名统计/未知工具频率/每章质量自检/压缩摘要质量（200 章实测：201 章质量覆盖、30 次压缩中 24 次保留写作上下文、平均节省 74.5%） | 实测 |
+
+测试基线（2026-08-01 harness 优化完成后实测）：
+- 后端：**647** passed（596 → 647，+51 新增测试）
+- 前端：62 files / 485 tests, 0 failed（vitest 实测）
 - 类型检查：`vue-tsc --noEmit` 通过
-- 工具：**17** 个 @tool
-- 代码量：backend/app 非测试约 34.5K 行（清理后）
-- 会话日志：25 个真实 v2 会话（`data/agent_sessions/`）
+- 架构规则：test_dependency_rules 通过（内核无领域依赖）
+- 工具：**19** 个 @tool（+check_chapter_format / check_structure_repeat）
+- 会话回放：20 个 200 章会话 JSONL 在改造后内核下加载全部成功
+
+遗留（未纳入本次范围）：
+- 两级压缩 LLM 摘要版：多视角评审（创作/工程/成本收益）结论为**现阶段不做**——T6 状态快照/
+  事实表/人物卡已外置覆盖「压缩丢人物关系」，LLM 摘要纯增量且违反「压缩路径无失败点」；
+  未来若实测出现 T6 覆盖不到的动态缺口，以「补充段 + 失败静默降级」条件性引入
+
+## 2026-08-02 T5 弱化 + 两级压缩评审（多视角机制第二次应用）
+
+- **T5 弱化**（`70a13148`）：主题词指纹是 200 章单本书补丁（题材特化）；「结构重复」本身非普适
+  （单元剧/日常文允许）；A 方案（内容无关结构特征）被工程视角证伪（换名城是语义节拍重复非句法异常）。
+  移除指纹检测（-30 行），仅保留标题重复检测（唯一普适不变量）
+- **两级压缩**：3 视角（创作条件性/工程条件性/成本收益不值得）→ 不做，理由见上
+- 验证：后端 590 passed
+
+## 2026-08-02 stub 生成端点体系清理（任务 `08-02-stub-generation-removal`，四视角评审一致推荐 C）
+
+多视角评审机制首用：创作/产品体验/工程维护/成本收益 4 个子代理并行评估 → 一致推荐删除（stub 硬编码
+success 无审计价值、前端组件零调用、B 方案与审批门/SSE 架构根本矛盾）→ 用户拍板执行：
+
+- **删除**：`execute_agent_api_tool` + 4 个生成端点（chapters.generate / athena ontology/evolution）+ 假错误管道
+  （_raise_if_agent_generation_failed/_with_agent_metadata/LEGACY_GENERATION_400_ERRORS）+ action 3 个 stub 动作
+  + 前端 3 个假生成方法（注释引导 v2 会话）
+- **修复评审盲区**：continuous writing/retry 后台任务此前调 stub 从不真生成 → 改接真路径
+  `create_or_replace_chapter`（trace 关联改 DB 查询）
+- **保留**：WritingAgentRun 表/模型（历史审计）、generate_chapter 动作、GET 查询端点
+- 生成入口收敛为唯一真路径：v2 agent 会话（AgentV2View）
+- 代码量：-443 行；后端 591 passed、前端 485 + vue-tsc 通过
+
+## 2026-08-01 能力框架确立：六项工程不变量（用户拍板，长期判断标准）
+
+harness 只约束**对任何题材成立**的写作工程不变量，情节内容（题材/风格/反派形态/冲突类型/卷部结构/
+情节走向）完全留给模型——内容特化会污染创作自由、导致产出同一化：
+
+1. **一致性**：人物/地点/事件/设定跨章不矛盾（实体登记、query_memory、事实表）
+2. **连续性**：章间衔接、因果不断裂（状态快照、relation_to_previous）
+3. **结构完整性**：伏笔登记-回收闭环、收束（endgame/must_resolve）
+4. **节奏管理**：篇幅/信息密度/不注水（check_quality_trend）
+5. **格式语言**：标点/排版/语言规范（check_chapter_format）
+6. **容错恢复**：幻觉/走偏纠偏（hook 兜底/错误注入/guard）
+
+判断标准：约束对**所有题材**是否成立——成立则 harness 管，否则是特化。
+
+### 弧线规划结构性校验（任务 `08-01-new-part-proposal-gate`，内容无关重构）
+- `plan_arc` define 可选 `relation_to_previous`：接续启动未声明 → 提示（不拒绝）；记录 metadata.arc_relation
+- `progress`：无收束约束 → endgame_hint 提示补 must_resolve（不阻塞）
+- T3 措辞泛化：「禁止新增更早/更深/更初层级」→「优先回收开放线索，暂缓开新线」
+- 原「抽象词黑名单校验反派」草稿撤销（情节内容归模型）
+- 测试：+4；后端 595 passed、前端 485 无回归
+
+## 2026-08-01 实体登记来源扩展（任务 `08-01-entity-registration-sources`，用户选 C 方案）
+
+解决实体登记白名单太薄（200 章项目 Setup 仅 1 角色 → entity_state 记忆仅 2 条）：
+
+- **新表 `entity_candidates`**（唯一约束 project+name，source 区分 rule/l2）
+- **rule 通道** `core/entity_miner.py`：中文姓氏白名单（~300 姓，移除虚词性那/和/从）+ 停止词尾过滤
+  + 汉字尾字校验；write_chapter/revise_chapter 正文后自动挖掘注册；**跨 ≥2 章转正**进 _capture_entities 白名单
+- **l2 通道**：background_analyzer deep_check 保存 extracted_facts 时 subject/object 注入（LLM 提取免转正）
+- **200 章数据验证**（30 章抽样）：程砚秋 29/苏晚晴 18/顾沉舟 6/林舟 8 章命中转正；
+  虚词误报（那/和/从 系）清零；称谓式角色（姚先生/婆婆/周伯）规则无法提取 → 由 L2 通道补充
+- 测试：+8；后端 591 passed、前端 485 无回归
+
+## 2026-08-01 生成模式统一到 v2 + prompting 全链淘汰（任务 `08-01-generation-unify-v2`，用户选 B 方案）
+
+一次性消除 v1 遗留的提示词子系统，生成统一为「内联提示词 + provider.complete」v2 风格：
+
+- **迁移**（`6a748f22`）：`core/prompt_budget.py`（预算截断纯函数，priority+头尾截断行为不变）、
+  `core/generation/`（chapter.py + blocks_* 6 模块 + errors + render.py 模板渲染/trace 元数据内联）、
+  `core/dialog_prompts.py`（624 行 dialog 装配去 PromptAssembler）；`chapters._build_chapter_call_payload`
+  改用 render_prompt + apply_context_budget；模板保留 5 个活跃文件（backend/prompts/*.txt 由 core 直接读）
+- **修复**（`3c294006`）：action_execution_service 的 generate_setup/storyline/outline 3 动作改走
+  athena control-plane 记录（v1 绞杀阶段 2 遗漏的死引用），补 4 个测试
+- **淘汰**（`9ca22e0a`）：`app/prompting/` 全包删除（-979 行）、5 个死亡模板、2 个测试文件
+- 测试基线（生成统一后实测）：后端 **583 passed**、前端 485 tests、vue-tsc 通过、
+  会话回放 20/20、依赖规则通过；代码量累计 -3,378 行（v1 绞杀 + 生成统一）
+
+## 2026-08-01 v1 生成管线全面绞杀（任务 `08-01-v1-pipeline-removal`，用户选 C 方案）
+
+统一 LLM 调用路径到 v2 provider，删除 v1 旧管线（阶段 1 迁移 → 阶段 2 删除 → 阶段 3 清理）：
+
+- **统一路径**：`Provider.complete()`（base.py 已有）+ `app/agent/providers/__init__.py::build_provider` 工厂；
+  athena 聊天（dialog_utils）、一致性 L2（l2_extractor，提示词内联）、章节修订/v2 动作
+  （chapters.create_or_replace_chapter）全部迁移，token 统计改用 `ProviderResponse.usage` 契约
+- **删除**（-2,399 行）：`core/ai_service.py`、`core/deepseek_adapter.py`、`core/chat_compaction.py`；
+  4 个死生成端点（outlines generate/expand-window、setups generate、storylines generate）；
+  `prompting/providers/{outline,setup,storyline,project}.py`（活跃符号迁 core：
+  SetupContextSnapshot/TRUNCATED_SETUP_CONTEXT_MARKER → `core/setup_context`、
+  parse_json_safely/normalise_json_text → `core/json_utils`、
+  project_chapter_word_range → `core/chapter_utils`、build_command_args_block → assembler）
+- **保留**：prompting 装配核心（assembler/registry/renderer/budgeter）+ dialog/chapter 生成链
+  （活跃功能依赖，删双套 HTTP 客户端即达目的）；chapters.generate 端点（已走 v2 agent tool）；全部 CRUD
+- **测试**：+1（provider.complete）；-29（生成端点/迁移历史/adapter 清理用例）；CRUD 用例保留
+- 测试基线（v1 绞杀后实测）：后端 **620 passed**、前端 485 tests、vue-tsc 通过、
+  会话回放 20/20 成功、依赖规则测试通过

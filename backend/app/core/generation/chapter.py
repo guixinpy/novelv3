@@ -1,0 +1,585 @@
+import json
+import re
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.core.model_call_trace import build_context_block
+from app.core.outline_lookup import find_outline_chapter
+from app.core.writing_agent_constraints import build_agent_chapter_constraint_block
+from app.models import ChapterContent, Project, Setup
+from app.core.generation.blocks_athena import athena_context_has_retrieval, build_athena_chapter_context_block
+from app.core.generation.blocks_few_shot import build_few_shot_examples_block
+from app.core.generation.blocks_knowledge_base import build_knowledge_base_candidate_block
+from app.core.generation.blocks_longform import build_longform_context_block
+from app.core.generation.blocks_retrieval import build_chapter_retrieval_block
+from app.core.generation.blocks_style import build_style_rule_block
+from app.core.json_utils import normalise_json_text
+from app.core.setup_context import SetupContextSnapshot, TRUNCATED_SETUP_CONTEXT_MARKER
+from app.core.agent_context_compression_projection import (
+    CONTEXT_WINDOW_PRESSURE_RATIO,
+    build_agent_context_compression_payload,
+    load_agent_context_compression_summary,
+)
+
+CHAPTER_CONTEXT_CHAR_BUDGET = 24000
+PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT = 300
+EXTRA_FEEDBACK_CHAR_LIMIT = 3000
+SETUP_WORLD_BLOCK_CHAR_LIMIT = 2000
+SETUP_CHARACTERS_BLOCK_CHAR_LIMIT = 2000
+SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT = 1200
+PRIORITY_USER_FEEDBACK = 0
+PRIORITY_LENGTH_CONSTRAINT = 1
+PRIORITY_PROJECT_LENGTH_CONSTRAINT = 2
+PRIORITY_AGENT_CONSTRAINTS = 8
+PRIORITY_KNOWLEDGE_BASE = 9
+PRIORITY_CHAPTER_TARGET = 10
+PRIORITY_LONGFORM_CONTEXT = 18
+PRIORITY_ATHENA_CONTEXT = 20
+PRIORITY_RETRIEVAL_EVIDENCE = 30
+PRIORITY_PREVIOUS_CHAPTER = 40
+PRIORITY_STYLE_RULE = 50
+PRIORITY_FEW_SHOT = 60
+PRIORITY_SETUP_WORLD = 80
+PRIORITY_SETUP_CORE_CONCEPT = 82
+PRIORITY_SETUP_CHARACTERS = 85
+
+
+def build_chapter_prompt_variables(project: Project, setup: Setup | SetupContextSnapshot, chapter_index: int) -> dict:
+    return {
+        "chapter_index": chapter_index,
+        "language": project.language,
+    }
+
+
+def build_chapter_prompt_context_blocks(
+    db: Session,
+    project: Project,
+    setup: Setup | SetupContextSnapshot,
+    chapter_index: int,
+    extra_feedback: str,
+    *,
+    max_context_chars: int | None = None,
+) -> tuple[list[dict], list[dict]]:
+    model_blocks: list[dict] = [
+        _prioritized(
+            build_context_block(
+                key="setup_world_building",
+                kind="setup",
+                title="世界观",
+                content=_compact_json_context(setup.world_building, max_chars=SETUP_WORLD_BLOCK_CHAR_LIMIT),
+            ),
+            PRIORITY_SETUP_WORLD,
+        ),
+        _prioritized(
+            build_context_block(
+                key="setup_characters",
+                kind="setup",
+                title="角色",
+                content=_compact_json_context(setup.characters, max_chars=SETUP_CHARACTERS_BLOCK_CHAR_LIMIT),
+            ),
+            PRIORITY_SETUP_CHARACTERS,
+        ),
+        _prioritized(
+            build_context_block(
+                key="setup_core_concept",
+                kind="setup",
+                title="核心概念",
+                content=_compact_json_context(setup.core_concept, max_chars=SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT),
+            ),
+            PRIORITY_SETUP_CORE_CONCEPT,
+        ),
+    ]
+    trace_only_blocks: list[dict] = []
+
+    if not extract_word_range(extra_feedback):
+        project_length_constraint = build_project_length_constraint(project)
+        if project_length_constraint:
+            model_blocks.append(
+                _prioritized(
+                    build_context_block(
+                        key="target_chapter_length",
+                        kind="generation_constraint",
+                        title="章节长度目标",
+                        content=project_length_constraint,
+                    ),
+                    PRIORITY_PROJECT_LENGTH_CONSTRAINT,
+                )
+            )
+
+    agent_constraints_block = build_agent_chapter_constraint_block(
+        db,
+        project_id=project.id,
+        chapter_index=chapter_index,
+    )
+    if agent_constraints_block:
+        model_blocks.append(_prioritized(agent_constraints_block, PRIORITY_AGENT_CONSTRAINTS))
+
+    knowledge_base_block = build_knowledge_base_candidate_block(project)
+    if knowledge_base_block:
+        model_blocks.append(_prioritized(knowledge_base_block, PRIORITY_KNOWLEDGE_BASE))
+
+    outline_block = _build_outline_chapter_target_block(db, project.id, chapter_index)
+    if outline_block:
+        model_blocks.append(_prioritized(outline_block, PRIORITY_CHAPTER_TARGET))
+
+    previous_block = _build_previous_chapter_summary_block(db, project.id, chapter_index)
+    if previous_block:
+        model_blocks.append(_prioritized(previous_block, PRIORITY_PREVIOUS_CHAPTER))
+
+    longform_block, _longform_package, longform_error_block = build_longform_context_block(
+        db,
+        project_id=project.id,
+        chapter_index=chapter_index,
+        user_query=extra_feedback,
+    )
+    if longform_block:
+        longform_block = _compress_longform_context_block_if_needed(
+            db,
+            project_id=project.id,
+            chapter_index=chapter_index,
+            longform_block=longform_block,
+            max_context_chars=max_context_chars,
+        )
+        model_blocks.append(_prioritized(longform_block, PRIORITY_LONGFORM_CONTEXT))
+    if longform_error_block:
+        trace_only_blocks.append(longform_error_block)
+
+    athena_block, athena_package, athena_error_block = build_athena_chapter_context_block(
+        db,
+        project_id=project.id,
+        chapter_index=chapter_index,
+    )
+    if athena_block:
+        model_blocks.append(_prioritized(athena_block, PRIORITY_ATHENA_CONTEXT))
+    if athena_error_block:
+        trace_only_blocks.append(athena_error_block)
+
+    retrieval_block, _retrieval_context, retrieval_error_block = build_chapter_retrieval_block(
+        db,
+        project_id=project.id,
+        chapter_index=chapter_index,
+    )
+    if retrieval_error_block:
+        trace_only_blocks.append(retrieval_error_block)
+    if retrieval_block:
+        if athena_context_has_retrieval(athena_package):
+            retrieval_block = _prioritized(retrieval_block, PRIORITY_RETRIEVAL_EVIDENCE)
+            retrieval_block["metadata"] = {
+                **retrieval_block.get("metadata", {}),
+                "trace_only": True,
+                "model_injection": "skipped_existing_in_athena_context",
+            }
+            trace_only_blocks.append(retrieval_block)
+        else:
+            model_blocks.append(_prioritized(retrieval_block, PRIORITY_RETRIEVAL_EVIDENCE))
+
+    style_block = build_style_rule_block(project)
+    if style_block:
+        model_blocks.append(_prioritized(style_block, PRIORITY_STYLE_RULE))
+
+    few_shot_block = build_few_shot_examples_block(project)
+    if few_shot_block:
+        model_blocks.append(_prioritized(few_shot_block, PRIORITY_FEW_SHOT))
+
+    if extra_feedback:
+        feedback_for_prompt = _compact_extra_feedback(extra_feedback)
+        model_blocks.append(
+            _prioritized(
+                build_context_block(
+                    key="extra_feedback",
+                    kind="user_feedback",
+                    title="用户修订反馈",
+                    content=feedback_for_prompt,
+                ),
+                PRIORITY_USER_FEEDBACK,
+            )
+        )
+        length_constraint = build_length_constraint(extra_feedback)
+        if length_constraint:
+            model_blocks.append(
+                _prioritized(
+                    build_context_block(
+                        key="length_constraint",
+                        kind="generation_constraint",
+                        title="长度约束",
+                        content=length_constraint,
+                    ),
+                    PRIORITY_LENGTH_CONSTRAINT,
+                )
+            )
+
+    return model_blocks, trace_only_blocks
+
+
+def build_chapter_trace_context_blocks(
+    rendered_prompt: str,
+    prompt_context_blocks: list[dict],
+    trace_only_context_blocks: list[dict] | None = None,
+) -> list[dict]:
+    return [
+        *prompt_context_blocks,
+        *(trace_only_context_blocks or []),
+        build_context_block(
+            key="generate_chapter_template",
+            kind="prompt_template",
+            title="章节生成提示词快照",
+            content=rendered_prompt,
+        ),
+    ]
+
+
+def _compress_longform_context_block_if_needed(
+    db: Session,
+    *,
+    project_id: str,
+    chapter_index: int,
+    longform_block: dict,
+    max_context_chars: int | None,
+) -> dict:
+    if not _longform_context_needs_compression(longform_block, max_context_chars=max_context_chars):
+        return longform_block
+
+    persisted_summary = load_agent_context_compression_summary(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        max_chars=max_context_chars,
+    )
+    if persisted_summary.get("status") == "ready":
+        compression_payload = (
+            persisted_summary.get("compression_payload")
+            if isinstance(persisted_summary.get("compression_payload"), dict)
+            else {}
+        )
+        compressed_context = compression_payload.get("compressed_context")
+        if isinstance(compressed_context, str) and compressed_context.strip():
+            return _compressed_longform_context_block(
+                longform_block,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                compressed_context=compressed_context,
+                compression_output=persisted_summary,
+                compression_payload=compression_payload,
+                metadata_source="context_compression_summary_record",
+                summary_record=persisted_summary.get("record")
+                if isinstance(persisted_summary.get("record"), dict)
+                else None,
+            )
+
+    compression_output = build_agent_context_compression_payload(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        max_chars=max_context_chars,
+        context_guard_failure_count=0,
+    )
+    if compression_output.get("status") != "ready":
+        return longform_block
+    compression_payload = (
+        compression_output.get("compression_payload")
+        if isinstance(compression_output.get("compression_payload"), dict)
+        else {}
+    )
+    compressed_context = compression_payload.get("compressed_context")
+    if not isinstance(compressed_context, str) or not compressed_context.strip():
+        return longform_block
+
+    return _compressed_longform_context_block(
+        longform_block,
+        project_id=project_id,
+        chapter_index=chapter_index,
+        compressed_context=compressed_context,
+        compression_output=compression_output,
+        compression_payload=compression_payload,
+        metadata_source="build_agent_context_compression_payload",
+    )
+
+
+def _compressed_longform_context_block(
+    longform_block: dict,
+    *,
+    project_id: str,
+    chapter_index: int,
+    compressed_context: str,
+    compression_output: dict[str, Any],
+    compression_payload: dict[str, Any],
+    metadata_source: str,
+    summary_record: dict[str, Any] | None = None,
+) -> dict:
+    compressed_block = build_context_block(
+        key=str(longform_block.get("key") or "longform_memory_context"),
+        kind="longform_context_compressed",
+        title="长篇记忆上下文（压缩）",
+        content=compressed_context,
+        sources=_compressed_longform_sources(
+            longform_block,
+            project_id=project_id,
+            chapter_index=chapter_index,
+            compression_payload=compression_payload,
+            summary_record=summary_record,
+        ),
+    )
+    compressed_block["metadata"] = {
+        **_dict_metadata(longform_block.get("metadata")),
+        "context_compression": _context_compression_metadata(
+            compression_output,
+            compression_payload=compression_payload,
+            source=metadata_source,
+        ),
+    }
+    return compressed_block
+
+
+def _longform_context_needs_compression(block: dict, *, max_context_chars: int | None) -> bool:
+    if not max_context_chars or max_context_chars <= 0:
+        return False
+    content_chars = len(str(block.get("content") or ""))
+    original_chars = _safe_int(block.get("original_char_count"))
+    pressure_chars = max(content_chars, original_chars)
+    return pressure_chars >= int(max_context_chars * CONTEXT_WINDOW_PRESSURE_RATIO)
+
+
+def _compressed_longform_sources(
+    longform_block: dict,
+    *,
+    project_id: str,
+    chapter_index: int,
+    compression_payload: dict[str, Any],
+    summary_record: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    sources = longform_block.get("sources") if isinstance(longform_block.get("sources"), list) else []
+    output = [
+        *[source for source in sources if isinstance(source, dict)],
+        {
+            "source_type": "ContextCompressor",
+            "source_id": project_id,
+            "label": "章节长篇上下文压缩",
+            "source_ref": f"chapter:{chapter_index}:context_compression",
+            "metadata": {
+                "chapter_index": chapter_index,
+                "target_max_chars": _safe_int(compression_payload.get("target_max_chars")),
+                "execution_mode": compression_payload.get("execution_mode"),
+            },
+        },
+    ]
+    if summary_record:
+        output.append(
+            {
+                "source_type": "LongformMemory",
+                "source_id": str(summary_record.get("id") or ""),
+                "label": str(summary_record.get("title") or "上下文压缩摘要"),
+                "source_ref": str(summary_record.get("scope_key") or ""),
+                "metadata": {
+                    "memory_type": summary_record.get("memory_type"),
+                    "chapter_index": chapter_index,
+                },
+            }
+        )
+    return output
+
+
+def _context_compression_metadata(
+    compression_output: dict[str, Any],
+    *,
+    compression_payload: dict[str, Any],
+    source: str = "build_agent_context_compression_payload",
+) -> dict[str, Any]:
+    projection = (
+        compression_output.get("projection")
+        if isinstance(compression_output.get("projection"), dict)
+        else {}
+    )
+    compression_plan = (
+        compression_output.get("compression_plan")
+        if isinstance(compression_output.get("compression_plan"), dict)
+        else {}
+    )
+    return {
+        "status": "applied",
+        "source": source,
+        "execution_mode": compression_payload.get("execution_mode"),
+        "target_max_chars": _safe_int(compression_payload.get("target_max_chars")),
+        "original_prompt_context_chars": _safe_int(compression_payload.get("original_prompt_context_chars")),
+        "compressed_context_chars": _safe_int(compression_payload.get("compressed_context_chars")),
+        "compression_ratio": compression_payload.get("compression_ratio"),
+        "projection_status": projection.get("status"),
+        "compression_plan_status": compression_plan.get("status"),
+        "pretrimmed_section_keys": _pretrimmed_section_keys(
+            compression_payload.get("pretrimmed_sections")
+        ),
+        "side_effects": compression_output.get("side_effects") or {},
+    }
+
+
+def _pretrimmed_section_keys(sections: Any) -> list[str]:
+    if not isinstance(sections, list):
+        return []
+    return [
+        str(section.get("key"))
+        for section in sections
+        if isinstance(section, dict) and section.get("key")
+    ]
+
+
+def _dict_metadata(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _safe_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def chapter_max_tokens(extra_feedback: str, *, project: Project | None = None) -> int:
+    word_range = extract_word_range(extra_feedback)
+    if word_range:
+        return min(4000, max(word_range[1] + 800, 1200))
+    if project is not None:
+        target_range = project_chapter_word_range(project)
+        if target_range:
+            return min(8000, max(target_range[1] + 800, 1200))
+    return 4000
+
+
+def build_project_length_constraint(project: Project) -> str | None:
+    target_range = project_chapter_word_range(project)
+    if not target_range:
+        return None
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    return (
+        f"项目计划约{target_words}字 / {target_chapters}章，"
+        f"本章正文建议控制在{target_range[0]}-{target_range[1]}字。"
+        "以剧情推进和章节钩子为先，允许少量浮动，但避免长期偏离目标节奏。"
+    )
+
+
+def project_chapter_word_range(project: Project) -> tuple[int, int] | None:
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    if target_words <= 0 or target_chapters <= 0:
+        return None
+    average = max(1, round(target_words / target_chapters))
+    if average >= 2000:
+        return average, max(average, round(average * 1.5))
+    target_min = round(average * 0.85)
+    return max(1, target_min), max(1, round(average * 1.15))
+
+
+def build_length_constraint(extra_feedback: str) -> str | None:
+    word_range = extract_word_range(extra_feedback)
+    if not word_range:
+        return None
+    return (
+        f"正文长度控制在{word_range[0]}-{word_range[1]}字，"
+        "不要为了解释设定而扩写，优先保证剧情推进和章节钩子。"
+    )
+
+
+def extract_word_range(text: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d{3,5})\s*(?:-|~|至|到|—|－)\s*(\d{3,5})\s*字", text or "")
+    if not match:
+        return None
+    low, high = int(match.group(1)), int(match.group(2))
+    if low <= 0 or high < low:
+        return None
+    return low, high
+
+
+def _build_outline_chapter_target_block(db: Session, project_id: str, chapter_index: int) -> dict | None:
+    result = find_outline_chapter(db, project_id, chapter_index)
+    if result is None:
+        return None
+    outline_id, chapter_outline = result
+    title = chapter_outline.get("title", "")
+    summary = chapter_outline.get("summary", "")
+    lines = [f"{title}：{summary}".strip("：")]
+    if chapter_outline.get("scenes"):
+        lines.append(f"场景：{'、'.join(chapter_outline['scenes'])}")
+    if chapter_outline.get("characters"):
+        lines.append(f"出场角色：{'、'.join(chapter_outline['characters'])}")
+    return build_context_block(
+        key="outline_chapter_target",
+        kind="outline",
+        title="本章大纲",
+        content="\n".join(line for line in lines if line),
+        sources=[
+            {
+                "source_type": "Outline",
+                "source_id": outline_id,
+                "label": f"第{chapter_index}章大纲",
+                "source_ref": f"Outline.chapters[{chapter_index}]",
+                "metadata": {"chapter_index": chapter_index},
+            }
+        ],
+    )
+
+
+def _build_previous_chapter_summary_block(db: Session, project_id: str, chapter_index: int) -> dict | None:
+    if chapter_index <= 1:
+        return None
+    previous = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index == chapter_index - 1,
+        )
+        .first()
+    )
+    if not previous or not previous.content:
+        return None
+    summary = _previous_chapter_preview(previous.content)
+    return build_context_block(
+        key="previous_chapter_summary",
+        kind="chapter_summary",
+        title="上一章摘要",
+        content=summary,
+        sources=[
+            {
+                "source_type": "ChapterContent",
+                "source_id": previous.id,
+                "label": previous.title or f"第{chapter_index - 1}章",
+                "source_ref": f"chapter:{chapter_index - 1}",
+                "metadata": {"chapter_index": chapter_index - 1},
+            }
+        ],
+    )
+
+
+def _prioritized(block: dict, priority: int) -> dict:
+    block["priority"] = priority
+    return block
+
+
+def _compact_extra_feedback(text: str) -> str:
+    cleaned = (text or "").strip()
+    if len(cleaned) <= EXTRA_FEEDBACK_CHAR_LIMIT:
+        return cleaned
+    return (
+        cleaned[:EXTRA_FEEDBACK_CHAR_LIMIT].rstrip()
+        + "\n\n[已截断超长用户反馈，后续粘贴内容未进入本次生成上下文]"
+    )
+
+
+def _compact_json_context(value: object, *, max_chars: int) -> str:
+    source_was_bounded = isinstance(value, str) and len(value) > max_chars
+    content = normalise_json_text(value) if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    if len(content) <= max_chars:
+        if source_was_bounded:
+            return content.rstrip() + TRUNCATED_SETUP_CONTEXT_MARKER
+        return content
+    return content[:max_chars].rstrip() + TRUNCATED_SETUP_CONTEXT_MARKER
+
+
+def _previous_chapter_preview(content: str, max_chars: int = PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT) -> str:
+    if len(content) <= max_chars:
+        return content
+    separator = "\n...\n"
+    head_chars = max_chars // 2
+    tail_chars = max_chars - head_chars - len(separator)
+    return f"{content[:head_chars]}{separator}{content[-tail_chars:]}"

@@ -5,8 +5,10 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
@@ -18,12 +20,20 @@ from app.agent.compaction import (
     compact_history,
     reset_compaction_stats,
 )
-from app.agent.events import ApprovalPending, ContextWarning, GuardTripped, LoopEvent, TurnEnded
+from app.agent.events import (
+    ApprovalPending,
+    ContextWarning,
+    GuardTripped,
+    LoopEvent,
+    ToolCallFinished,
+    TurnEnded,
+)
 from app.agent.loop import BeforeToolCall, EventSink, StopReason, run_turn
 from app.agent.providers.base import Provider
 from app.agent.tooling import ToolContext, ToolRegistry
 
-import asyncio
+# 快照提供者：由外部（API 层）注入，避免内核依赖领域模块（CADR-005）
+SnapshotProvider = Callable[[], str | None]
 
 
 def _sanitize_tool_message_order(history: list[dict]) -> list[dict]:
@@ -70,6 +80,7 @@ class AgentHarness:
         config: HarnessConfig,
         before_tool_call: BeforeToolCall | None = None,
         approval_gate: ApprovalGate | None = None,
+        snapshot_provider: SnapshotProvider | None = None,
     ) -> None:
         self.approval_gate: ApprovalGate | None = approval_gate
         self.session_id = session_id
@@ -79,6 +90,7 @@ class AgentHarness:
         self.tool_context = tool_context
         self.config = config
         self.before_tool_call = before_tool_call
+        self._snapshot_provider = snapshot_provider
         reset_compaction_stats()
         self._steering: deque[str] = deque()
         self._follow_ups: deque[str] = deque()
@@ -110,6 +122,17 @@ class AgentHarness:
         for message in history[before_count:]:
             self._append_log("message", message)
             self.messages.append(message)
+
+    # ---- 项目状态快照（T6 R1） ----
+
+    def _build_snapshot(self) -> str | None:
+        if self._snapshot_provider is None:
+            return None
+        try:
+            return self._snapshot_provider()
+        except Exception:
+            # 快照是只读辅助，失败静默跳过，不阻断写作
+            return None
 
     # ---- 队列 ----
 
@@ -183,15 +206,22 @@ class AgentHarness:
         self._append_log("message", {"role": "user", "content": user_text})
         self.messages.append({"role": "user", "content": user_text})
 
-        history = [{"role": "system", "content": self.config.system_prompt}, *self.messages]
+        # T6 R1：回合级项目状态快照（临时拼入 system，不持久化）
+        system_content = self.config.system_prompt
+        snapshot = self._build_snapshot()
+        if snapshot:
+            system_content = f"{system_content}\n\n{snapshot}"
+        history = [{"role": "system", "content": system_content}, *self.messages]
         last_guard_diagnosis: dict | None = None
+        tool_error_total = 0
+        tool_error_samples: list[tuple[str, str]] = []
 
         # 上下文用量预检 + 自动压缩（M3：75% 阈值 + 头尾保护；超限时压缩中间历史）
         ctx_warning = check_context_usage(history)
         if ctx_warning is not None:
             pct, total = ctx_warning
             await sink(ContextWarning(usage_pct=round(pct, 3), total_tokens=total, max_tokens=128_000))
-            compressed = compact_history(history)
+            compressed = compact_history(history, extra_context=snapshot)
             if len(compressed) < len(history):
                 compressed = _sanitize_tool_message_order(compressed)
                 summary = next(
@@ -215,7 +245,7 @@ class AgentHarness:
         before_count = len(history)
 
         async def persisting_sink(event: LoopEvent) -> None:
-            nonlocal last_guard_diagnosis
+            nonlocal last_guard_diagnosis, tool_error_total, tool_error_samples
             if isinstance(event, TurnEnded):
                 self._append_log(
                     "turn_ended",
@@ -228,6 +258,10 @@ class AgentHarness:
                 )
             elif isinstance(event, GuardTripped):
                 last_guard_diagnosis = event.diagnosis
+            elif isinstance(event, ToolCallFinished) and event.is_error:
+                tool_error_total += 1
+                if len(tool_error_samples) < 3:
+                    tool_error_samples.append((event.name, event.result_text[:120]))
             await sink(event)
 
         if self.approval_gate is not None:
@@ -256,3 +290,12 @@ class AgentHarness:
                 f"请更换策略：换用不同的工具或调整参数后再试。"
             )
             self.queue_follow_up(recover_advice)
+        elif tool_error_total:
+            # T1 R2：回合内工具错误 → 通用「错误诊断 + 下一步建议」注入（每回合 ≤1 条）
+            detail = "; ".join(f"{name}: {text[:80]}" for name, text in tool_error_samples)
+            if tool_error_total > len(tool_error_samples):
+                detail += f"（另有 {tool_error_total - len(tool_error_samples)} 次未列出）"
+            self.queue_follow_up(
+                f"【工具调用提示】本回合 {tool_error_total} 次工具调用失败（{detail}）。"
+                f"建议：调整参数重试，或改用其他工具。"
+            )

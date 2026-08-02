@@ -2,8 +2,25 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
+from app.core.entity_miner import (
+    mine_entities_from_text,
+    promoted_entity_names,
+    register_entity_candidates,
+)
+from app.core.format_checker import check_chapter_hook, check_text_format
+from app.core.longform_memory import get_or_create_longform_memory
+from app.core.structural_similarity import _CLUSTER_MIN, detect_structure_repeats
 from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry
+
+_CLUSTER_MIN_CHAPTERS = _CLUSTER_MIN
+
+
+def _register_mined_entities(ctx: ToolContext, content: str, chapter_index: int) -> None:
+    """实体登记来源扩展：正文规则提取候选写入 entity_candidates（rule 通道）。"""
+    names = mine_entities_from_text(content or "")
+    if names:
+        register_entity_candidates(ctx.db, ctx.project_id, chapter_index, names, source="rule")
 
 
 def _chapter_summary(ch: ChapterContent) -> dict:
@@ -102,27 +119,23 @@ def _capture_entities(ctx: ToolContext, content: str, chapter_index: int) -> Non
         for ch in setup.characters:
             if isinstance(ch, dict) and ch.get("name"):
                 known_entities[str(ch["name"])] = "character"
+    # 实体登记来源扩展：转正候选（rule 跨 ≥2 章 / l2 免转正）并入白名单
+    for name in promoted_entity_names(ctx.db, ctx.project_id):
+        known_entities.setdefault(name, "character")
 
     for name, etype in known_entities.items():
         if name in content:
-            existing = ctx.db.query(LongformMemory).filter(
-                LongformMemory.project_id == ctx.project_id,
-                LongformMemory.memory_type == "entity_state",
-                LongformMemory.scope_key == name,
-                LongformMemory.status == "active",
-            ).first()
-            if existing:
-                existing.end_chapter_index = chapter_index
-            else:
-                ctx.db.add(LongformMemory(
-                    project_id=ctx.project_id,
-                    memory_type="entity_state",
-                    scope_key=name,
-                    title=name,
-                    summary=f"「{name}」出现在第 {chapter_index} 章",
-                    start_chapter_index=chapter_index,
-                    status="active",
-                ))
+            # T2 R2：统一 upsert（存在则更新出场章与状态，不存在则创建）
+            get_or_create_longform_memory(
+                ctx.db, ctx.project_id, "entity_state", name,
+                defaults={
+                    "title": name,
+                    "summary": f"「{name}」出现在第 {chapter_index} 章",
+                    "start_chapter_index": chapter_index,
+                    "status": "active",
+                },
+                updates={"end_chapter_index": chapter_index, "status": "active"},
+            )
 
 
 def _update_project_word_count(ctx: ToolContext) -> None:
@@ -188,6 +201,8 @@ async def write_chapter(ctx: ToolContext, chapter_index: int, content: str, titl
         ctx.db.add(ch)
 
     ctx.db.flush()  # 确保新数据在查询前可见
+    # 实体登记来源扩展：正文规则提取候选（rule 通道）
+    _register_mined_entities(ctx, content, chapter_index)
     _capture_entities(ctx, content, chapter_index)
     _update_project_word_count(ctx)
     # 首章写入后项目进入写作阶段（否则状态停留在 draft/setup，模型会反复补设定）
@@ -234,6 +249,7 @@ async def revise_chapter(ctx: ToolContext, chapter_index: int, new_content: str,
     if new_title:
         chapter.title = new_title
     ctx.db.flush()
+    _register_mined_entities(ctx, new_content, chapter_index)
     _capture_entities(ctx, new_content, chapter_index)
     _update_project_word_count(ctx)
     ctx.db.commit()
@@ -297,6 +313,104 @@ async def check_chapter_quality(ctx: ToolContext, chapter_index: int) -> ToolRes
         "status": chapter.status,
         "issues": issues,
         "quality": "pass" if not issues or all(i["severity"] == "info" for i in issues) else "needs_review",
+    })
+
+
+# ── T4: 输出格式守门员 ──
+
+
+@tool(
+    registry=registry,
+    name="check_chapter_format",
+    description=(
+        "对指定章节做输出格式校验与章末卡点校验：markdown 加粗残留、备选词残留（X/Y）、"
+        "正文自带章题行、全角引号成对、半角标点混用，以及章末是否缺乏悬念钩子。"
+        "写完一章后建议立即调用；quality=fail 时请重写该章，needs_review 时请修正提示项。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "chapter_index": {"type": "integer", "description": "要检查的章节序号"},
+        },
+        "required": ["chapter_index"],
+    },
+)
+async def check_chapter_format(ctx: ToolContext, chapter_index: int) -> ToolResult:
+    chapter = (
+        ctx.db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == ctx.project_id,
+            ChapterContent.chapter_index == chapter_index,
+        )
+        .first()
+    )
+    if chapter is None:
+        return ToolResult.fail(f"第 {chapter_index} 章不存在。")
+
+    content = chapter.content or ""
+    issues = check_text_format(content)
+    issues.extend(check_chapter_hook(content))
+    has_error = any(i["severity"] == "error" for i in issues)
+    quality = "fail" if has_error else ("pass" if not issues else "needs_review")
+    return ToolResult.ok({
+        "chapter_index": chapter_index,
+        "title": chapter.title,
+        "quality": quality,
+        "issues": issues,
+    })
+
+
+# ── T5: 结构级重复检测 ──
+
+
+@tool(
+    registry=registry,
+    name="check_structure_repeat",
+    description=(
+        "检测最近 N 章是否存在标题重复（规范化后相同的标题出现 ≥2 次）。"
+        "repeated=true 时请更换标题，避免同一主题循环。每写完一个副本/卷末建议调用。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "window": {
+                "type": "integer",
+                "description": "检查最近几章，默认 30，上限 60",
+                "default": 30,
+            },
+        },
+    },
+)
+async def check_structure_repeat(ctx: ToolContext, window: int = 30) -> ToolResult:
+    window = max(1, min(window, 60))
+    chapters = (
+        ctx.db.query(ChapterContent)
+        .filter(ChapterContent.project_id == ctx.project_id)
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    if len(chapters) < _CLUSTER_MIN_CHAPTERS:
+        return ToolResult.ok({
+            "repeated": False,
+            "issues": [],
+            "note": f"章节不足 {_CLUSTER_MIN_CHAPTERS} 章，无法做结构重复检测。",
+        })
+
+    recent = chapters[-window:]
+    issues = detect_structure_repeats([
+        {"index": c.chapter_index, "title": c.title or "", "content": c.content or ""}
+        for c in recent
+    ])
+    return ToolResult.ok({
+        "repeated": bool(issues),
+        "issues": issues,
+        "checked_window": len(recent),
+        "tip": (
+            "检测到模板循环时，请更换冲突类型、人物关系或解法；"
+            "若接近卷尾，按 plan_arc 终局约束集中收束而非开新副本。"
+        ) if issues else "未发现结构级重复。",
     })
 
 
@@ -376,7 +490,7 @@ async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
         trend = "stable"
         advice = f"字数稳定：{int(first_half_avg)} → {int(second_half_avg)}，质量趋势正常。"
 
-    return ToolResult.ok({
+    result: dict = {
         "trend": trend,
         "window": len(recent),
         "word_counts": [
@@ -389,4 +503,50 @@ async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
         "max": max_wc,
         "ratio": round(ratio, 2),
         "advice": advice,
-    })
+    }
+
+    # T3 R3：终局核对——活跃弧线接近收束章（≤5 章）且仍有未回收伏笔 → 强制回收模式
+    active_arc = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == ctx.project_id,
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.status == "active",
+        )
+        .first()
+    )
+    endgame = (active_arc.memory_metadata or {}).get("endgame") if active_arc is not None else None
+    if endgame:
+        latest_index = chapters[-1].chapter_index
+        resolve_before = int(endgame.get("resolve_before") or 0)
+        remaining = max(0, resolve_before - latest_index)
+        must_resolve = endgame.get("must_resolve") or []
+        must_open = []
+        for item in must_resolve:
+            hit = (
+                ctx.db.query(LongformMemory)
+                .filter(
+                    LongformMemory.project_id == ctx.project_id,
+                    LongformMemory.memory_type == "plotline",
+                    LongformMemory.scope_key.like(f"%{item}%"),
+                    LongformMemory.status == "open",
+                )
+                .first()
+            )
+            if hit is not None:
+                must_open.append(item)
+        if remaining <= 5:
+            result["endgame_mode"] = True
+            result["endgame_remaining"] = remaining
+            result["must_resolve_open"] = must_open
+            result["endgame_advice"] = (
+                f"本卷剩余 {remaining} 章。未回收伏笔："
+                f"{'、'.join(must_open) if must_open else '(无)'}。"
+                f"请进入回收模式：优先收束开放伏笔，暂缓开新线。"
+            )
+        else:
+            result["endgame_mode"] = False
+    else:
+        result["endgame_mode"] = False
+
+    return ToolResult.ok(result)

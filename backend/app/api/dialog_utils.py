@@ -4,10 +4,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -24,7 +21,6 @@ from app.models import (
     PendingAction,
     Project,
     Setup,
-    WritingAgentRun,
 )
 from app.schemas.workspace import ProjectDiagnosisOut
 from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS
@@ -104,7 +100,7 @@ def _build_chat_call_payload(
     diagnosis: ProjectDiagnosisOut,
     dialog_type: str = "hermes",
 ) -> dict:
-    from app.prompting.providers.dialog import build_dialog_call_payload
+    from app.core.dialog_prompts import build_dialog_call_payload
     result = build_dialog_call_payload(
         db, dialog_id, project, diagnosis,
         dialog_type=dialog_type, history_limit=40,
@@ -174,8 +170,8 @@ def _safe_create_chat_trace(
 
 
 def _should_save_trace_messages() -> bool:
-    from app.core.ai_service import ai_service_config
-    return ai_service_config.save_trace_messages
+    # v1 绞杀：ai_service_config 已随 v1 管线删除，trace 消息默认保存
+    return True
 
 
 async def _free_chat_reply(
@@ -189,74 +185,34 @@ async def _free_chat_reply(
     if not load_api_key():
         return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI"), None
 
-    from app.core.ai_service import AIService
+    from app.agent.providers import build_provider
 
     trace = None
-    ai_service = AIService()
+    provider = build_provider()
     started_at = now_ms()
     payload = _build_chat_call_payload(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
     messages = payload["messages"]
     model_name = payload["model"]
 
     try:
-        result = await ai_service.complete(
-            model=model_name, messages=messages, project_id=project.id,
+        # v1 绞杀：LLM 调用统一走 v2 provider（非流式一次返回）
+        result = await provider.complete(
+            model=model_name, messages=messages,
         )
         duration = now_ms() - started_at
         reply = result.content or ""
         trace = _safe_create_chat_trace(
             db, project.id, f"{dialog_type}_chat", model=model_name,
             request_messages=messages, response_content=reply,
-            prompt_tokens=result.prompt_tokens or 0,
-            completion_tokens=result.completion_tokens or 0,
+            prompt_tokens=result.usage.prompt_tokens or 0,
+            completion_tokens=result.usage.completion_tokens or 0,
             duration_ms=duration,
         )
         return reply, trace
     except Exception as exc:
         log_event("chat_error", error=str(exc))
         return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}"), trace
+    finally:
+        await provider.close()
 
 
-# ── Agent API tool runner (extracted from writing_agent/api_control_plane.py) ──
-
-
-@dataclass(frozen=True)
-class AgentApiToolRunResult:
-    run: WritingAgentRun
-    control_plane: dict[str, Any]
-
-
-async def execute_agent_api_tool(
-    db: Session,
-    *,
-    project_id: str,
-    entrypoint: str,
-    version: str,
-    source: str,
-    action_type: str,
-    tool_name: str,
-    goal: str,
-    command_args: str | None = None,
-    params: dict[str, Any] | None = None,
-    extra_control_plane: dict[str, Any] | None = None,
-) -> AgentApiToolRunResult:
-    control_plane = {
-        "version": version,
-        "source": source,
-        "action_type": action_type,
-        **(extra_control_plane or {}),
-    }
-    run = WritingAgentRun(
-        id=str(uuid4()),
-        project_id=project_id,
-        entrypoint=entrypoint,
-        goal=goal,
-        status="success",
-        output={"control_plane": control_plane, "tool_name": tool_name},
-        input={"control_plane": control_plane},
-        started_at=datetime.now(UTC),
-        finished_at=datetime.now(UTC),
-    )
-    db.add(run)
-    db.commit()
-    return AgentApiToolRunResult(run=run, control_plane=control_plane)

@@ -22,11 +22,10 @@ def chapter_action_params(command_args: str | None = None, candidate_params: dic
 
 
 def action_label(action_type: str, result: dict | None = None, command_args: str | None = None, action_params: dict | None = None) -> str:
-    label_map = {"generate_setup": "设定", "generate_storyline": "故事线", "generate_outline": "大纲"}
     if action_type == "generate_chapter":
         chapter_index = (result or {}).get("chapter_index") or chapter_action_params(command_args, action_params).get("chapter_index", 1)
         return f"第{chapter_index}章正文"
-    return label_map.get(action_type, action_type)
+    return action_type
 
 
 class ActionExecutionService:
@@ -44,30 +43,6 @@ class ActionExecutionService:
         if not project_id:
             return {"status": "failed", "error": "缺少项目 ID"}
         try:
-            if action_type == "generate_setup":
-                from app.api.setups import generate_setup
-
-                await generate_setup(project_id, self.db, command_args=command_args)
-                result = {"status": "success"}
-                if trace_id := self.latest_trace_id(project_id=project_id, trace_type="setup_generation"):
-                    result["trace_id"] = trace_id
-                return result
-            if action_type == "generate_storyline":
-                from app.api.storylines import generate_storyline
-
-                await generate_storyline(project_id, self.db, command_args=command_args)
-                result = {"status": "success"}
-                if trace_id := self.latest_trace_id(project_id=project_id, trace_type="storyline_generation"):
-                    result["trace_id"] = trace_id
-                return result
-            if action_type == "generate_outline":
-                from app.api.outlines import generate_outline
-
-                await generate_outline(project_id, self.db, command_args=command_args)
-                result = {"status": "success"}
-                if trace_id := self.latest_trace_id(project_id=project_id, trace_type="outline_generation"):
-                    result["trace_id"] = trace_id
-                return result
             if action_type == "generate_chapter":
                 from app.api.chapters import create_or_replace_chapter
 

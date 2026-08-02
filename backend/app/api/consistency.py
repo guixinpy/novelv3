@@ -19,7 +19,7 @@ from app.models import (
     WorldEvidence,
     WorldFactClaim,
 )
-from app.prompting.providers.storyline import SetupContextSnapshot
+from app.core.setup_context import SetupContextSnapshot
 from app.schemas import ConsistencyIssueListResponse
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner

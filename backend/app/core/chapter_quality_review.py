@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.outline_lookup import find_outline_chapter
 from app.core.world_proposal_review_queue import build_proposal_review_queue
 from app.models import ChapterContent, Outline, Project, ProjectProfileVersion, Setup
-from app.prompting.providers.chapter import project_chapter_word_range
+from app.core.chapter_utils import project_chapter_word_range
 
 GENERIC_TITLE_RE = re.compile(r"^第\s*[\d零〇一二两三四五六七八九十百千]+\s*章$")
 FUTURE_OUTLINE_WINDOW = 5

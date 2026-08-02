@@ -198,3 +198,40 @@ async def test_update_setup_merges(ctx: ToolContext):
 
     setup = ctx.db.query(Setup).filter(Setup.project_id == ctx.project_id).first()
     assert setup.world_building["background"] == "新背景"
+
+
+@pytest.mark.asyncio
+async def test_entity_registration_via_rule_mining(ctx: ToolContext):
+    """实体登记来源扩展：正文新角色跨 ≥2 章出现 → 转正进入 entity_state 记忆。"""
+    from app.models import EntityCandidate
+
+    content_1 = "欧阳雪走进仓库时，程砚秋已经在了。"
+    content_2 = "程砚秋在码头见到了欧阳雪。"
+    r1 = await write_chapter(ctx, chapter_index=1, content=content_1, title="第一章")
+    assert not r1.is_error
+    r2 = await write_chapter(ctx, chapter_index=2, content=content_2, title="第二章")
+    assert not r2.is_error
+
+    # 候选表有欧阳雪与程砚秋（rule 通道）
+    rows = (
+        ctx.db.query(EntityCandidate)
+        .filter(EntityCandidate.project_id == ctx.project_id)
+        .all()
+    )
+    names = {r.name: r for r in rows}
+    assert "欧阳雪" in names
+    assert names["欧阳雪"].chapter_count == 2  # 跨 2 章
+    assert "程砚秋" in names
+
+    # 跨 2 章转正 → entity_state 记忆出现（第二轮 write_chapter 的 _capture_entities 已含候选白名单）
+    mems = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == ctx.project_id,
+            LongformMemory.memory_type == "entity_state",
+        )
+        .all()
+    )
+    mem_names = {m.scope_key for m in mems}
+    assert "程砚秋" in mem_names
+    assert "欧阳雪" in mem_names

@@ -133,6 +133,7 @@ async def run_turn(
         )
         history.append(_tool_calls_to_message(response.content, response.tool_calls))
 
+        guard_tripped = False
         for tool_call in response.tool_calls:
             result = await _execute_one(
                 tool_call, registry, tool_context, before_tool_call, emit,
@@ -150,7 +151,11 @@ async def run_turn(
             if guard_result.tripped:
                 await emit(GuardTripped(level=guard_result.level, reason=guard_result.reason, diagnosis=guard_result.diagnosis))
                 stop_reason = StopReason.GUARD_TRIPPED
+                guard_tripped = True
                 break
+        if guard_tripped:
+            # guard 触发必须结束整个回合（此前只 break 工具批循环，回合会继续空转浪费调用）
+            break
 
         if steering_source is not None:
             for steering_text in steering_source():
@@ -179,7 +184,20 @@ async def _execute_one(
 ) -> ToolResult:
     await emit(ToolCallStarted(id=tool_call.id, name=tool_call.name, arguments=tool_call.arguments))
     if before_tool_call is not None:
-        block_reason = await before_tool_call(tool_call.name, tool_call.arguments, ctx)
+        try:
+            block_reason = await before_tool_call(tool_call.name, tool_call.arguments, ctx)
+        except Exception as exc:  # noqa: BLE001 - 钩子异常不得击穿回合（T1 R1，fail-closed 拦截）
+            result = ToolResult.fail(
+                f"工具「{tool_call.name}」的前置检查异常，本次调用未执行。错误：{exc}。"
+                "请重试或改用其他工具。"
+            )
+            await emit(
+                ToolCallFinished(
+                    id=tool_call.id, name=tool_call.name,
+                    is_error=True, result_text=result.to_model_text(),
+                )
+            )
+            return result
         if block_reason is not None:
             result = ToolResult.fail(block_reason)
             await emit(

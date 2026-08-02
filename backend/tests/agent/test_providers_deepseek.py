@@ -240,6 +240,20 @@ async def test_gives_up_after_max_attempts():
 
 
 @pytest.mark.asyncio
+async def test_complete_returns_final_response():
+    """P1 R1: complete() 一次性调用 = stream() 排空，返回最终 ProviderResponse。"""
+    provider = make_provider(text_stream_handler)
+    result = await provider.complete(
+        [{"role": "user", "content": "hi"}], temperature=0.7, max_tokens=100
+    )
+    assert isinstance(result, ProviderResponse)
+    assert result.content == "你好，作者"
+    assert result.usage.prompt_tokens == 12
+    assert result.usage.completion_tokens == 5
+    assert result.model == "deepseek-chat"
+
+
+@pytest.mark.asyncio
 async def test_mid_stream_failure_not_retried():
     calls = {"n": 0}
 

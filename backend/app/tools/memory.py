@@ -1,12 +1,40 @@
 """长期记忆工具：情节线追踪和实体状态查询（M4）。"""
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from app.agent.tooling import ToolContext, ToolResult, tool
 from app.core.athena_retrieval import search_retrieval
-from app.models import LongformMemory
+from app.core.longform_memory import get_or_create_longform_memory
+from app.models import ChapterContent, LongformMemory
 from app.tools.registry import registry
+
+# T2 R3：情节线标题登记规范
+_PLOTLINE_TITLE_MAX = 40
+_CHAPTER_REF = re.compile(r"第[0-9一二三四五六七八九十百千万]+[章卷部]")
+_PLOTLINE_TITLE_TEMPLATE = "建议命名模板：「弧名-目标」，例如「第一卷-寻找父亲-真相」。"
+# T3 R4：伏笔回收期限（超过 N 章未闭环提醒）
+_PLOTLINE_STALE_AFTER = 30
+
+
+def _open_plotlines_containing(ctx: ToolContext, items: list[str]) -> list[str]:
+    """返回 items 中仍对应开放 plotline 的项（包含匹配，容忍标题措辞差异）。"""
+    still_open = []
+    for item in items:
+        hit = (
+            ctx.db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "plotline",
+                LongformMemory.scope_key.like(f"%{item}%"),
+                LongformMemory.status == "open",
+            )
+            .first()
+        )
+        if hit is not None:
+            still_open.append(item)
+    return still_open
 
 
 @tool(
@@ -42,50 +70,53 @@ async def track_plotline(
     if action == "open":
         if not title:
             return ToolResult.fail("open 操作需要 title 参数。")
-        existing = (
-            ctx.db.query(LongformMemory)
-            .filter(
-                LongformMemory.project_id == ctx.project_id,
-                LongformMemory.memory_type == "plotline",
-                LongformMemory.scope_key == title,
+        # T2 R3：登记规范校验（200 章实验暴露：标题带「第139章线」导致检索必然失败）
+        if len(title) > _PLOTLINE_TITLE_MAX:
+            return ToolResult.fail(
+                f"情节线标题过长（{len(title)} 字符，上限 {_PLOTLINE_TITLE_MAX}）。"
+                f"{_PLOTLINE_TITLE_TEMPLATE}"
             )
-            .first()
+        if _CHAPTER_REF.search(title):
+            return ToolResult.fail(
+                "情节线标题不应携带章节/卷/部序号（如「第139章线（第二部）」），"
+                "否则后续检索必然失败。"
+                f"{_PLOTLINE_TITLE_TEMPLATE}"
+            )
+        existing = get_or_create_longform_memory(
+            ctx.db, ctx.project_id, "plotline", title,
+            defaults={
+                "title": title,
+                "summary": summary,
+                "start_chapter_index": chapter_index or None,
+                "status": "open",
+                "memory_metadata": {"provenance": "agent_inferred", "source": "track_plotline"},
+            },
         )
-        if existing:
-            if existing.status == "open":
-                return ToolResult.ok({
-                    "action": "already_exists",
-                    "id": existing.id,
-                    "title": title,
-                    "status": "open",
-                })
-            # 重新打开已闭环的情节线（复用同一行，唯一约束按 scope_key 生效）
-            existing.status = "open"
-            existing.summary = summary or existing.summary
-            existing.start_chapter_index = chapter_index or existing.start_chapter_index
-            existing.end_chapter_index = None
+        if existing.id is None:
+            # 新建（id 在 commit 后填充）
             ctx.db.commit()
             return ToolResult.ok({
-                "action": "reopened",
+                "action": "opened",
                 "id": existing.id,
                 "title": title,
                 "status": "open",
             })
-        mem = LongformMemory(
-            project_id=ctx.project_id,
-            memory_type="plotline",
-            scope_key=title,
-            title=title,
-            summary=summary,
-            start_chapter_index=chapter_index or None,
-            status="open",
-            memory_metadata={"provenance": "agent_inferred", "source": "track_plotline"},
-        )
-        ctx.db.add(mem)
+        if existing.status == "open":
+            return ToolResult.ok({
+                "action": "already_exists",
+                "id": existing.id,
+                "title": title,
+                "status": "open",
+            })
+        # 重新打开已闭环的情节线（复用同一行，唯一约束按 scope_key 生效）
+        existing.status = "open"
+        existing.summary = summary or existing.summary
+        existing.start_chapter_index = chapter_index or existing.start_chapter_index
+        existing.end_chapter_index = None
         ctx.db.commit()
         return ToolResult.ok({
-            "action": "opened",
-            "id": mem.id,
+            "action": "reopened",
+            "id": existing.id,
             "title": title,
             "status": "open",
         })
@@ -116,14 +147,20 @@ async def track_plotline(
         })
 
     elif action == "query":
-        query = ctx.db.query(LongformMemory).filter(
+        base = ctx.db.query(LongformMemory).filter(
             LongformMemory.project_id == ctx.project_id,
             LongformMemory.memory_type == "plotline",
         )
         if title:
-            query = query.filter(LongformMemory.scope_key == title)
-        memories = query.order_by(LongformMemory.created_at.desc()).all()
-        return ToolResult.ok({
+            # T2 R3：前缀/模糊匹配（精确与前缀均被 contains LIKE 覆盖），未命中回退最近开放线
+            memories = (
+                base.filter(LongformMemory.scope_key.like(f"%{title}%"))
+                .order_by(LongformMemory.created_at.desc())
+                .all()
+            )
+        else:
+            memories = base.order_by(LongformMemory.created_at.desc()).all()
+        result: dict = {
             "action": "query_result",
             "plotlines": [
                 {
@@ -136,7 +173,60 @@ async def track_plotline(
                 }
                 for m in memories
             ],
-        })
+        }
+
+        # T3 R4：伏笔回收期限——开放超过 30 章未闭环 → stale 提醒
+        if memories:
+            latest_row = (
+                ctx.db.query(ChapterContent.chapter_index)
+                .filter(ChapterContent.project_id == ctx.project_id)
+                .order_by(ChapterContent.chapter_index.desc())
+                .first()
+            )
+            latest_index = latest_row[0] if latest_row else 0
+            stale_open: list[str] = []
+            for item, m in zip(result["plotlines"], memories):
+                if (
+                    m.status == "open"
+                    and m.start_chapter_index is not None
+                    and latest_index - m.start_chapter_index > _PLOTLINE_STALE_AFTER
+                ):
+                    item["stale"] = True
+                    item["age_chapters"] = latest_index - m.start_chapter_index
+                    stale_open.append(f"「{m.title}」(起始于第{m.start_chapter_index}章)")
+            if stale_open:
+                result["stale_warning"] = (
+                    f"以下伏笔已开放超过 {_PLOTLINE_STALE_AFTER} 章：{'、'.join(stale_open)}。"
+                    f"请在本卷收束前回收，或显式闭环。"
+                )
+
+        if title and not memories:
+            # 未命中：回退最近创建的开放情节线并告警，避免「登记了却找不到」
+            fallback_row = (
+                base.filter(LongformMemory.status == "open")
+                .order_by(LongformMemory.created_at.desc())
+                .first()
+            )
+            if fallback_row is not None:
+                result["fallback"] = True
+                result["fallback_note"] = (
+                    f"未找到标题匹配「{title}」的情节线，已回退最近创建的开放情节线"
+                    f"「{fallback_row.title}」。"
+                )
+                result["plotlines"] = [
+                    {
+                        "id": fallback_row.id,
+                        "title": fallback_row.title,
+                        "summary": fallback_row.summary,
+                        "status": fallback_row.status,
+                        "start_chapter": fallback_row.start_chapter_index,
+                        "end_chapter": fallback_row.end_chapter_index,
+                    }
+                ]
+            else:
+                result["fallback"] = True
+                result["fallback_note"] = f"未找到标题匹配「{title}」的情节线，且无开放的备选情节线。"
+        return ToolResult.ok(result)
 
     return ToolResult.fail(f"未知操作：{action}，支持 open/close/query。")
 
@@ -184,7 +274,17 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             (LongformMemory.title.like(like)) |
             (LongformMemory.summary.like(like))
         )
-    memories = query.order_by(LongformMemory.updated_at.desc()).limit(effective_limit).all()
+    # T6 R3：人物卡优先级——author_explicit（人物/关系卡）优先于 agent_inferred（主题句）。
+    # 多取 3 倍再内存排序，避免 SQL 对 JSON 列排序。
+    memories = (
+        query.order_by(LongformMemory.updated_at.desc())
+        .limit(effective_limit * 3)
+        .all()
+    )
+    memories.sort(
+        key=lambda m: (0 if (m.memory_metadata or {}).get("provenance") == "author_explicit" else 1)
+    )
+    memories = memories[:effective_limit]
 
     result = {
         "memories": [
@@ -265,7 +365,16 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             "title": {"type": "string", "description": "弧线标题，如「第一卷·迷雾初现」"},
             "summary": {"type": "string", "description": "弧线概要"},
             "start_chapter": {"type": "integer", "description": "弧线起始章节"},
-            "end_chapter": {"type": "integer", "description": "弧线结束章节"},
+            "end_chapter": {"type": "integer", "description": "弧线结束章节（即本卷收束章）"},
+            "must_resolve": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "本卷收束前必须回收的伏笔清单（可选）。接近卷尾时 harness 会核对并提醒收束",
+            },
+            "relation_to_previous": {
+                "type": "string",
+                "description": "与前卷/前文的关系（可选）：承接的旧线索、人物、事件。接续上一弧线启动新卷时建议声明",
+            },
         },
         "required": ["action"],
     },
@@ -277,6 +386,8 @@ async def plan_arc(
     summary: str = "",
     start_chapter: int = 0,
     end_chapter: int = 0,
+    must_resolve: list[str] | None = None,
+    relation_to_previous: str = "",
 ) -> ToolResult:
     if action == "define":
         if not title or end_chapter < 1:
@@ -314,65 +425,83 @@ async def plan_arc(
                 f"包含章节: {ch_titles}。"
                 f"弧线概要: {a.summary or '(无)'}"
             )
-            existing = (
+            # arc_summary 统一 upsert（T2 R2）
+            get_or_create_longform_memory(
+                ctx.db, ctx.project_id, "arc_summary",
+                a.title or f"arc_{a.id}",
+                defaults={
+                    "title": f"弧线摘要: {a.title}",
+                    "summary": arc_summary_text,
+                    "start_chapter_index": a.start_chapter_index,
+                    "end_chapter_index": a.end_chapter_index,
+                    "status": "completed",
+                    "memory_metadata": {"provenance": "agent_inferred", "source": "arc_consolidation_auto"},
+                },
+            )
+        # Create new arc（upsert：同标题重复 define 时更新，避免唯一约束冲突）
+        arc = get_or_create_longform_memory(
+            ctx.db, ctx.project_id, "story_arc", title,
+            defaults={
+                "title": title,
+                "summary": summary or f"{start_chapter}-{end_chapter}章弧线",
+                "start_chapter_index": start_chapter,
+                "end_chapter_index": end_chapter,
+                "status": "active",
+                "memory_metadata": {"provenance": "author_explicit", "source": "plan_arc"},
+            },
+        )
+        arc.summary = summary or arc.summary
+        arc.start_chapter_index = start_chapter
+        arc.end_chapter_index = end_chapter
+        arc.status = "active"
+        # T3 R1：终局约束合并写入（不覆盖 provenance/source）
+        if must_resolve:
+            meta = dict(arc.memory_metadata or {})
+            meta["endgame"] = {"resolve_before": end_chapter, "must_resolve": list(must_resolve)}
+            arc.memory_metadata = meta
+        # 弧线结构：与前卷关系记录（连续性维度）
+        if relation_to_previous:
+            meta = dict(arc.memory_metadata or {})
+            meta["arc_relation"] = relation_to_previous
+            arc.memory_metadata = meta
+        ctx.db.commit()
+
+        # 接续启动检测：上一弧线 end_chapter 与当前 start 相邻 → 提示声明前卷关系（不拒绝）
+        continuation_hint = ""
+        if not relation_to_previous:
+            prev_arc = (
                 ctx.db.query(LongformMemory)
                 .filter(
                     LongformMemory.project_id == ctx.project_id,
-                    LongformMemory.memory_type == "arc_summary",
-                    LongformMemory.scope_key == (a.title or f"arc_{a.id}"),
+                    LongformMemory.memory_type == "story_arc",
+                    LongformMemory.end_chapter_index < start_chapter,
                 )
+                .order_by(LongformMemory.end_chapter_index.desc())
                 .first()
             )
-            if not existing:
-                ctx.db.add(LongformMemory(
-                    project_id=ctx.project_id,
-                    memory_type="arc_summary",
-                    scope_key=a.title or f"arc_{a.id}",
-                    title=f"弧线摘要: {a.title}",
-                    summary=arc_summary_text,
-                    start_chapter_index=a.start_chapter_index,
-                    end_chapter_index=a.end_chapter_index,
-                    status="completed",
-                    memory_metadata={"provenance": "agent_inferred", "source": "arc_consolidation_auto"},
-                ))
-        # Create new arc（upsert：同标题重复 define 时更新，避免唯一约束冲突）
-        existing_arc = (
-            ctx.db.query(LongformMemory)
-            .filter(
-                LongformMemory.project_id == ctx.project_id,
-                LongformMemory.memory_type == "story_arc",
-                LongformMemory.scope_key == title,
-            )
-            .first()
-        )
-        if existing_arc is not None:
-            existing_arc.summary = summary or existing_arc.summary
-            existing_arc.start_chapter_index = start_chapter
-            existing_arc.end_chapter_index = end_chapter
-            existing_arc.status = "active"
-            arc = existing_arc
-        else:
-            arc = LongformMemory(
-                project_id=ctx.project_id,
-                memory_type="story_arc",
-                scope_key=title,
-                title=title,
-                summary=summary or f"{start_chapter}-{end_chapter}章弧线",
-                start_chapter_index=start_chapter,
-                end_chapter_index=end_chapter,
-                status="active",
-                memory_metadata={"provenance": "author_explicit", "source": "plan_arc"},
-            )
-            ctx.db.add(arc)
-        ctx.db.commit()
-        return ToolResult.ok({
+            if prev_arc is not None and start_chapter <= (prev_arc.end_chapter_index or 0) + 2:
+                continuation_hint = (
+                    f"新卷「{title}」紧接上一弧线「{prev_arc.title}」(Ch{prev_arc.start_chapter_index}→"
+                    f"{prev_arc.end_chapter_index}) 启动。建议在 define 时声明 relation_to_previous "
+                    f"（承接的旧线索/人物/事件），避免读者产生世界重启感。"
+                )
+
+        result: dict = {
             "action": "defined",
             "title": title,
             "span": f"Ch{start_chapter} → Ch{end_chapter}",
             "total_chapters": end_chapter - start_chapter + 1,
             "status": "active",
-            "tip": f"弧线「{title}」已激活。请在写作过程中定期调用 plan_arc progress 查看进度。弧线结束前 3 章请提前规划下一弧线。",
-        })
+            "endgame_remaining": end_chapter - start_chapter + 1,
+            "must_resolve": list(must_resolve) if must_resolve else [],
+            "tip": f"弧线「{title}」已激活。请在写作过程中定期调用 plan_arc progress 查看进度。弧线结束前 3 章请提前规划下一弧线。"
+                   f"本卷收束前必须回收的伏笔：{('、'.join(must_resolve)) if must_resolve else '(未登记)'}。",
+        }
+        if relation_to_previous:
+            result["relation_to_previous"] = relation_to_previous
+        if continuation_hint:
+            result["continuation_hint"] = continuation_hint
+        return ToolResult.ok(result)
 
     elif action == "progress":
         active_arc = (
@@ -415,6 +544,35 @@ async def plan_arc(
             "remaining": remaining,
             "percent": pct,
         }
+
+        # T3 R2：终局状态——剩余章数 vs 未回收伏笔，接近卷尾强制回收模式
+        endgame = (active_arc.memory_metadata or {}).get("endgame")
+        if not endgame:
+            # 弧线结构：未设收束约束时提示（不阻塞）
+            result["endgame_hint"] = (
+                "本卷未设置收束约束（define 时可补 must_resolve 与收束章）。"
+                "长卷易出现开线不收束，建议补设回收清单。"
+            )
+        if endgame:
+            latest_row = (
+                ctx.db.query(ChapterContent.chapter_index)
+                .filter(ChapterContent.project_id == ctx.project_id)
+                .order_by(ChapterContent.chapter_index.desc())
+                .first()
+            )
+            latest_index = latest_row[0] if latest_row else 0
+            resolve_before = int(endgame.get("resolve_before") or 0)
+            remaining_to_end = max(0, resolve_before - latest_index)
+            must_open = _open_plotlines_containing(ctx, endgame.get("must_resolve") or [])
+            result["endgame_remaining"] = remaining_to_end
+            result["must_resolve_open"] = must_open
+            if must_open and remaining_to_end <= 5:
+                result["endgame_warning"] = (
+                    f"本卷剩余 {remaining_to_end} 章，以下伏笔必须在收束前回收："
+                    f"{'、'.join(must_open)}。接近收束章，请优先回收开放线索，暂缓开新线，"
+                    f"进入回收模式集中收束。"
+                )
+
         if near_end:
             result["warning"] = (
                 f"弧线「{active_arc.title}」即将结束（还剩 {remaining} 章）。"
@@ -443,18 +601,18 @@ async def plan_arc(
                 f"包含章节: {ch_titles}。"
                 f"弧线概要: {active_arc.summary or '(无)'}"
             )
-            summary_mem = LongformMemory(
-                project_id=ctx.project_id,
-                memory_type="arc_summary",
-                scope_key=active_arc.title or f"arc_{active_arc.id}",
-                title=f"弧线摘要: {active_arc.title}",
-                summary=arc_summary,
-                start_chapter_index=active_arc.start_chapter_index,
-                end_chapter_index=active_arc.end_chapter_index,
-                status="completed",
-                memory_metadata={"provenance": "agent_inferred", "source": "arc_consolidation"},
+            get_or_create_longform_memory(
+                ctx.db, ctx.project_id, "arc_summary",
+                active_arc.title or f"arc_{active_arc.id}",
+                defaults={
+                    "title": f"弧线摘要: {active_arc.title}",
+                    "summary": arc_summary,
+                    "start_chapter_index": active_arc.start_chapter_index,
+                    "end_chapter_index": active_arc.end_chapter_index,
+                    "status": "completed",
+                    "memory_metadata": {"provenance": "agent_inferred", "source": "arc_consolidation"},
+                },
             )
-            ctx.db.add(summary_mem)
             ctx.db.commit()
             result["arc_consolidated"] = True
             result["arc_summary"] = arc_summary

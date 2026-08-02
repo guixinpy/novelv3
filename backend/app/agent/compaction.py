@@ -68,6 +68,7 @@ def compact_history(
     tail_token_budget: float = 0.20,  # 尾部占窗口 20%
     max_tokens: int = 128_000,
     force: bool = False,
+    extra_context: str | None = None,
 ) -> list[dict]:
     """压缩对话历史：Token-Budget 尾部保护 + 防抖。
 
@@ -75,6 +76,7 @@ def compact_history(
     - tail_count 改为 tail_token_budget（动态计算尾部保留条数）
     - 添加防抖保护：连续两次节省 <10% 时跳过压缩
     - 提高摘要信息量
+    - extra_context（T6 R2）：追加「最近写作上下文」段，压缩后保住可行动的写作信息
 
     Args:
         history: 完整消息列表（含 system 消息）。
@@ -82,6 +84,7 @@ def compact_history(
         tail_token_budget: 尾部 token 预算比例（默认 20% 的 max_tokens）。
         max_tokens: 模型上下文窗口大小。
         force: 强制压缩（跳过防抖）。
+        extra_context: 追加到摘要的写作上下文文本（如项目状态快照）。
 
     Returns:
         压缩后的消息列表。
@@ -114,7 +117,8 @@ def compact_history(
     if not force:
         estimated_after = (
             sum(estimate_message_tokens(m) for m in history[:head_count])
-            + estimate_tokens(_build_summary_text(history, head_count, len(history) - tail_count))
+            + estimate_tokens(_build_summary_text(
+                history, head_count, len(history) - tail_count, extra_context=extra_context))
             + sum(estimate_message_tokens(m) for m in history[-tail_count:])
         )
         saving_ratio = 1.0 - (estimated_after / max(1, before_tokens))
@@ -131,12 +135,17 @@ def compact_history(
     head = history[:head_count]
     tail = history[-tail_count:]
     mid_end = len(history) - tail_count
-    summary = _build_summary_text(history, head_count, mid_end)
+    summary = _build_summary_text(history, head_count, mid_end, extra_context=extra_context)
     return head + [{"role": "user", "content": summary}] + tail
 
 
-def _build_summary_text(history: list[dict], start: int, end: int) -> str:
-    """构建结构化中间摘要（确定性，不依赖 LLM）。"""
+def _build_summary_text(
+    history: list[dict], start: int, end: int, extra_context: str | None = None,
+) -> str:
+    """构建结构化中间摘要（确定性，不依赖 LLM）。
+
+    extra_context（T6 R2）：追加「最近写作上下文」段，压缩后保住章节/人物/线索信息。
+    """
     middle = history[start:end]
     user_msgs = []
     tool_names = set()
@@ -192,5 +201,7 @@ def _build_summary_text(history: list[dict], start: int, end: int) -> str:
         parts.append(f"质量自检: {qs}。")
     if user_msgs:
         parts.append(f"用户关注点: {'; '.join(user_msgs[:5])}。")
+    if extra_context:
+        parts.append(f"最近写作上下文: {extra_context[:300]}。")
 
     return " ".join(parts)

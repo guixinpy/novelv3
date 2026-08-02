@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import require_project
@@ -10,17 +9,8 @@ from app.db import get_db
 from app.models import Outline, Storyline
 from app.schemas import ProposalBundleSplitCreate, ProposalReviewCreate, ProposalReviewRollbackCreate
 from app.schemas.world_proposals import ProposalReviewQueueOut
-from app.api.dialog_utils import AgentApiToolRunResult, execute_agent_api_tool
 
 router = APIRouter()
-ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION = "phase68.athena_evolution_agent.v1"
-ATHENA_EVOLUTION_GENERATE_ENTRYPOINT = "athena_evolution_plan_generate"
-LEGACY_GENERATION_400_ERRORS = {
-    "API key not configured",
-    "Setup not generated yet",
-    "Storyline not generated yet",
-}
-
 
 @router.get("/evolution/plan")
 def get_evolution_plan(
@@ -67,77 +57,6 @@ def get_evolution_plan(
             "foreshadowing": storyline.foreshadowing,
         } if storyline else None,
     }
-
-
-@router.post("/evolution/plan/generate")
-async def generate_evolution_plan(
-    project_id: str,
-    target: str = "outline",
-    response_mode: str = Query("window", pattern="^(full|window)$"),
-    db: Session = Depends(get_db),
-):
-    require_project(db, project_id)
-    if target == "storyline":
-        result = await _execute_evolution_generate_tool(db, project_id, target="storyline")
-        _raise_if_agent_generation_failed(result, fallback_error="Agent storyline generation failed")
-        if response_mode == "full":
-            generated = db.query(Storyline).filter(Storyline.project_id == project_id).order_by(Storyline.updated_at.desc()).first()
-            return _with_agent_metadata(generated, result=result, target=target)
-        return _with_agent_metadata(get_evolution_plan_window(db=db, project_id=project_id)["storyline"], result=result, target=target)
-    result = await _execute_evolution_generate_tool(db, project_id, target="outline")
-    _raise_if_agent_generation_failed(result, fallback_error="Agent outline generation failed")
-    if response_mode == "full":
-        generated = db.query(Outline).filter(Outline.project_id == project_id).order_by(Outline.updated_at.desc()).first()
-        return _with_agent_metadata(generated, result=result, target=target)
-    return _with_agent_metadata(get_evolution_plan_window(db=db, project_id=project_id)["outline"], result=result, target=target)
-
-
-async def _execute_evolution_generate_tool(
-    db: Session,
-    project_id: str,
-    *,
-    target: str,
-) -> AgentApiToolRunResult:
-    if target == "storyline":
-        return await execute_agent_api_tool(
-            db,
-            project_id=project_id,
-            entrypoint=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
-            version=ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION,
-            source=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
-            action_type="generate_storyline",
-            tool_name="generate_storyline",
-            goal="通过 Athena 叙事脉络入口生成故事线",
-            extra_control_plane={"target": "storyline"},
-        )
-    return await execute_agent_api_tool(
-        db,
-        project_id=project_id,
-        entrypoint=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
-        version=ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION,
-        source=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
-        action_type="generate_outline",
-        tool_name="generate_outline",
-        goal="通过 Athena 叙事脉络入口生成章节大纲",
-        extra_control_plane={"target": "outline"},
-    )
-
-
-def _raise_if_agent_generation_failed(result: AgentApiToolRunResult, *, fallback_error: str) -> None:
-    if result.run.status == "success":
-        return
-    detail = result.run.error or fallback_error
-    status_code = 400 if detail in LEGACY_GENERATION_400_ERRORS else 500
-    raise HTTPException(status_code=status_code, detail=detail)
-
-
-def _with_agent_metadata(payload, *, result: AgentApiToolRunResult, target: str) -> dict:
-    body = jsonable_encoder(payload)
-    if body is None:
-        raise HTTPException(status_code=500, detail=f"Agent {target} generation completed without output")
-    body["agent_run_id"] = result.run.id
-    body["control_plane"] = result.control_plane
-    return body
 
 
 @router.get("/evolution/proposals")
