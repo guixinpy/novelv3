@@ -1,3 +1,7 @@
+"""Mozhou AI Writer 入口（arch-refactor：仅挂 v2 agent API）。
+
+旧 v1 路由已随旧代码整链退役（阶段 4）；前端后续重写时将对接新 API。
+"""
 import os
 import time
 from contextlib import asynccontextmanager
@@ -7,30 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.local_diagnostics import log_event, new_request_id
-from app.db import SessionLocal
-from app.services.tasks.background_task_service import BackgroundTaskService
-
-
-def fail_interrupted_background_tasks():
-    db = SessionLocal()
-    try:
-        count = BackgroundTaskService(db).fail_interrupted_running_tasks()
-        if count:
-            log_event("background_tasks_interrupted", marked_failed=count)
-    except Exception as exc:
-        log_event("background_tasks_interrupted_scan_failed", error=str(exc))
-    finally:
-        db.close()
+from app.api.v2 import agent as agent_v2
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    fail_interrupted_background_tasks()
     yield
 
 
-app = FastAPI(title="Mozhou AI Writer", lifespan=lifespan)
+app = FastAPI(title="Mozhou AI Writer (v2 agent)", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,74 +32,18 @@ app.add_middleware(
 
 @app.middleware("http")
 async def local_request_diagnostics(request, call_next):
-    request_id = new_request_id()
     started = time.perf_counter()
     try:
         response = await call_next(request)
-    except Exception as exc:
-        log_event(
-            "request_done",
-            request_id=request_id,
-            method=request.method,
-            path=request.url.path,
-            status=500,
-            duration_ms=int((time.perf_counter() - started) * 1000),
-            error=str(exc),
-        )
+    except Exception:
         raise
-    response.headers["X-Request-ID"] = request_id
-    log_event(
-        "request_done",
-        request_id=request_id,
-        method=request.method,
-        path=request.url.path,
-        status=response.status_code,
-        duration_ms=int((time.perf_counter() - started) * 1000),
-    )
+    response.headers["X-Request-ID"] = str(int(started * 1_000_000))
     return response
 
-from app.api import (
-    athena,
-    background_tasks_api,
-    chapter_revisions,
-    chapters,
-    config,
-    consistency,
-    export,
-    model_call_traces,
-    outlines,
-    preferences,
-    projects,
-    setups,
-    storylines,
-    topologies,
-    v2_sessions,
-    versions,
-    world_model,
-    writing,
-)
-from app.api.v2 import agent as agent_v2
 
-app.include_router(projects.router)
-app.include_router(setups.router)
-app.include_router(chapters.router)
-app.include_router(chapter_revisions.router)
-app.include_router(config.router)
-app.include_router(storylines.router)
-app.include_router(outlines.router)
-app.include_router(topologies.router)
-app.include_router(consistency.router)
-app.include_router(writing.router)
-app.include_router(versions.router)
-app.include_router(export.router)
-app.include_router(model_call_traces.router)
-app.include_router(preferences.router)
-app.include_router(background_tasks_api.router)
-app.include_router(world_model.router)
-app.include_router(athena.router)
-app.include_router(v2_sessions.router)
 app.include_router(agent_v2.router)
 
+# 兼容端点：旧前端健康检查
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok"}

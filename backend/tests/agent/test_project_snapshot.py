@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.tooling import ToolContext
+from core.tools.base import ToolContext
 from domain.memory.project_snapshot import build_project_snapshot
 from app.models import ChapterContent, LongformMemory, Project, Setup
 
@@ -24,7 +24,7 @@ def ctx(db_session, project):
 
 @pytest.mark.asyncio
 async def test_snapshot_contains_writing_context(ctx: ToolContext):
-    from app.tools.memory import plan_arc, track_plotline
+    from domain.memory.memory_service import plan_arc, track_plotline
 
     # 3 章
     for i in range(1, 4):
@@ -41,11 +41,11 @@ async def test_snapshot_contains_writing_context(ctx: ToolContext):
         status="active",
     ))
     # 活跃弧线 + 终局
-    await plan_arc(ctx, action="define", title="第一卷",
+    plan_arc(ctx.db, ctx.project_id, action="define", title="第一卷",
                    summary="雾城谜案", start_chapter=1, end_chapter=50,
                    must_resolve=["林舟案"])
     # 开放 plotline
-    await track_plotline(ctx, action="open", title="林舟案", chapter_index=1)
+    track_plotline(ctx.db, ctx.project_id, action="open", title="林舟案", chapter_index=1)
     ctx.db.commit()
 
     snapshot = build_project_snapshot(ctx.db, ctx.project_id)

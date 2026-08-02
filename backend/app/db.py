@@ -4,7 +4,7 @@ import sqlite3
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from app.core.database_url import database_url, ensure_sqlite_parent_dir
+from app.database_url import database_url, ensure_sqlite_parent_dir
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
 os.makedirs(DATA_DIR, exist_ok=True)

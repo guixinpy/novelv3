@@ -27,7 +27,6 @@ from app.models import (
     RetrievalDocument,
     RetrievalEmbedding,
     RetrievalTerm,
-    WorldFactClaim,
 )
 KNOWLEDGE_CANDIDATES_KEY = "knowledge_base_candidates"
 
@@ -679,19 +678,6 @@ def _project_sources(db: Session, project_id: str) -> Iterator[RetrievalSource]:
     if project is not None:
         yield from _knowledge_base_candidate_sources(project.style_config)
 
-    facts = (
-        db.query(WorldFactClaim)
-        .filter(
-            WorldFactClaim.project_id == project_id,
-            WorldFactClaim.claim_status == "confirmed",
-            WorldFactClaim.claim_layer == "truth",
-        )
-        .order_by(WorldFactClaim.chapter_index.asc().nullsfirst(), WorldFactClaim.claim_id.asc())
-        .yield_per(50)
-    )
-    for fact in facts:
-        yield _fact_source(fact)
-
 
 def _project_sources_by_key(
     db: Session,
@@ -755,38 +741,12 @@ def _project_sources_by_key(
             if source.source_id in source_ids_by_type["knowledge_base_candidate"]:
                 yield source
 
-    for source_ids in _iter_id_batches(source_ids_by_type["world_fact"]):
-        facts = (
-            db.query(WorldFactClaim)
-            .filter(
-                WorldFactClaim.project_id == project_id,
-                WorldFactClaim.id.in_(source_ids),
-                WorldFactClaim.claim_status == "confirmed",
-                WorldFactClaim.claim_layer == "truth",
-            )
-            .order_by(WorldFactClaim.chapter_index.asc().nullsfirst(), WorldFactClaim.claim_id.asc())
-            .yield_per(50)
-        )
-        for fact in facts:
-            yield _fact_source(fact)
-
 
 def _iter_id_batches(source_ids: set[str]) -> Iterator[list[str]]:
     ordered_ids = sorted(source_ids)
     batch_size = max(1, SOURCE_KEY_QUERY_BATCH_SIZE)
     for start in range(0, len(ordered_ids), batch_size):
         yield ordered_ids[start:start + batch_size]
-
-
-def sync_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> dict[str, int]:
-    _delete_document(db, project_id=fact.project_id, source_type="world_fact", source_id=fact.id)
-    if fact.claim_layer != "truth" or fact.claim_status != "confirmed":
-        return {"documents": 0, "chunks": 0, "embeddings": 0}
-    return _index_sources(db, fact.project_id, [_fact_source(fact)])
-
-
-def delete_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> None:
-    _delete_document(db, project_id=fact.project_id, source_type="world_fact", source_id=fact.id)
 
 
 def _chapter_source(chapter: ChapterContent) -> RetrievalSource:
@@ -870,28 +830,6 @@ def _knowledge_base_candidate_source(candidate: dict[str, Any]) -> RetrievalSour
             "source_refs": source_refs,
             "tags": tags,
             "confidence": candidate.get("confidence"),
-        },
-    )
-
-
-def _fact_source(fact: WorldFactClaim) -> RetrievalSource:
-    value = _json_value(fact.object_ref_or_value)
-    text = f"{fact.subject_ref}.{fact.predicate} = {value}"
-    if fact.notes:
-        text = f"{text}\n{fact.notes}"
-    return RetrievalSource(
-        source_type="world_fact",
-        source_id=fact.id,
-        source_ref=f"claim:{fact.claim_id}",
-        title=f"{fact.subject_ref}.{fact.predicate}",
-        text=text,
-        chapter_index=fact.chapter_index,
-        profile_version=fact.profile_version,
-        metadata={
-            "claim_id": fact.claim_id,
-            "subject_ref": fact.subject_ref,
-            "predicate": fact.predicate,
-            "evidence_refs": fact.evidence_refs or [],
         },
     )
 

@@ -1,16 +1,14 @@
 """记忆工具（arch-refactor）：plan_arc / track_plotline / query_memory / memory_tree。
 
-服务逻辑复用旧 app/tools/memory.py 的 handler（阶段 4 前过渡期，
-旧业务逻辑随后续清理迁入 domain/memory/）；本层只做：
-- pydantic args_model（新框架 schema 契约）
-- 旧 ToolResult → 新 ToolResult 适配
+业务逻辑在 domain/memory/memory_service.py（工具描述与业务分离），
+本层只做 pydantic args_model + 服务调用 + 错误转换。
 """
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
 from core.tools.base import ToolContext, ToolRegistry, ToolResult, tool
-import app.tools.memory as _old_memory  # 旧业务逻辑（过渡期）
+from domain.memory.memory_service import MemoryServiceError, memory_tree, plan_arc, query_memory, track_plotline
 
 
 class TrackPlotlineArgs(BaseModel):
@@ -37,60 +35,85 @@ class PlanArcArgs(BaseModel):
     relation_to_previous: str = Field(default="", max_length=200, description="与上一弧线的关系")
 
 
-def _adapt(old_result) -> ToolResult:
-    """旧 ToolResult → 新 ToolResult。"""
-    if old_result.is_error:
-        return ToolResult.fail(str(old_result.error), error_code="memory_op_failed")
-    return ToolResult.ok(old_result.data)
+class MemoryTreeArgs(BaseModel):
+    detail_level: str = Field(default="overview", pattern="^(overview|arcs|chapters|full)$")
+
+
+def _require_ctx(ctx: ToolContext) -> None:
+    if ctx.db is None or not ctx.project_id:
+        raise MemoryServiceError("工具上下文缺少 db/project_id")
+
+
+def _call(ctx: ToolContext, fn, *args, **kwargs) -> ToolResult:
+    _require_ctx(ctx)
+    try:
+        return ToolResult.ok(fn(ctx.db, ctx.project_id, *args, **kwargs))
+    except MemoryServiceError as exc:
+        return ToolResult.fail(str(exc), error_code="memory_op_failed")
 
 
 def register_memory_tools(registry: ToolRegistry) -> None:
     @tool(
         registry=registry,
         name="track_plotline",
-        description=_old_memory.track_plotline.__doc__ or "登记、查询或闭环一条情节线/伏笔",
+        description=(
+            "登记、查询或闭环一条情节线/伏笔。操作类型决定行为："
+            "open=创建新情节线，close=闭环，query=查询。"
+        ),
         args_model=TrackPlotlineArgs,
         permission="read",
     )
-    def track_plotline(ctx: ToolContext, action: str, title: str = "", summary: str = "", chapter_index: int = 0) -> ToolResult:
-        return _adapt(_old_memory.track_plotline(ctx, action, title=title, summary=summary, chapter_index=chapter_index))
+    def track_plotline_handler(ctx: ToolContext, action: str, title: str = "", summary: str = "", chapter_index: int = 0) -> ToolResult:
+        return _call(ctx, track_plotline, action, title, summary=summary, chapter_index=chapter_index)
 
     @tool(
         registry=registry,
         name="query_memory",
-        description=_old_memory.query_memory.__doc__ or "查询跨章节的长期记忆",
+        description=(
+            "查询跨章节的长期记忆：按类型和关键字检索。"
+            "【上下文注入上限】每次 LLM 调用最多使用本工具 1 次，返回最多 5 条记忆。"
+            "推荐用法：1) 写作前用 memory_type='arc_summary' 回顾已完成弧线摘要（上限 3 条）；"
+            "2) 用 memory_type='plotline' 检查开放情节线（上限 5 条）；"
+            "3) 用 keyword 搜索特定人物/地点（上限 3 条）。"
+            "注意每条 memory 携带 provenance 字段：author_explicit=作者显式设定（可信度高），agent_inferred=Agent 推理（可信度低）。"
+        ),
         args_model=QueryMemoryArgs,
         permission="read",
     )
-    def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str = "", limit: int = 5, provenance: str = "all") -> ToolResult:
-        return _adapt(_old_memory.query_memory(ctx, memory_type, keyword=keyword, limit=limit, provenance=provenance))
+    def query_memory_handler(ctx: ToolContext, memory_type: str = "all", keyword: str = "", limit: int = 5, provenance: str = "all") -> ToolResult:
+        return _call(ctx, query_memory, memory_type, keyword, limit=limit, provenance=provenance)
 
     @tool(
         registry=registry,
         name="plan_arc",
-        description=_old_memory.plan_arc.__doc__ or "规划/检查/列出弧线",
+        description=(
+            "规划、检查或列出弧线（story arc）。操作类型决定行为："
+            "define=定义新弧线（指定起始和结束章节），progress=检查弧线进度，list=列出全部弧线。"
+            "每章写完后用 progress 检查；弧线还剩 3 章时提前规划下一弧线。"
+        ),
         args_model=PlanArcArgs,
         permission="read",
     )
-    def plan_arc(
+    def plan_arc_handler(
         ctx: ToolContext, action: str, title: str = "", summary: str = "",
         start_chapter: int = 0, end_chapter: int = 0,
         must_resolve: list[str] | None = None, relation_to_previous: str = "",
     ) -> ToolResult:
-        return _adapt(
-            _old_memory.plan_arc(
-                ctx, action, title=title, summary=summary,
-                start_chapter=start_chapter, end_chapter=end_chapter,
-                must_resolve=must_resolve, relation_to_previous=relation_to_previous,
-            )
+        return _call(
+            ctx, plan_arc, action, title, summary=summary,
+            start_chapter=start_chapter, end_chapter=end_chapter,
+            must_resolve=must_resolve, relation_to_previous=relation_to_previous,
         )
 
     @tool(
         registry=registry,
         name="memory_tree",
-        description=_old_memory.memory_tree.__doc__ or "查看记忆树概览",
-        args_model=None,
+        description=(
+            "查看项目的层级记忆树结构（project → arc → chapter → plotline）。"
+            "用于了解项目整体记忆组织、发现记忆空白区域。"
+        ),
+        args_model=MemoryTreeArgs,
         permission="read",
     )
-    def memory_tree(ctx: ToolContext) -> ToolResult:
-        return _adapt(_old_memory.memory_tree(ctx))
+    def memory_tree_handler(ctx: ToolContext, detail_level: str = "overview") -> ToolResult:
+        return _call(ctx, memory_tree, detail_level)
