@@ -1,20 +1,18 @@
 # 04 · 开发规则
 
-继承旧版 `04-development-rules.md` 中被验证有效的纪律，针对重构期补充绞杀式迁移规则。
+继承旧版 `04-development-rules.md` 中被验证有效的纪律（重构期绞杀式迁移规则已完成使命，见归档）。
 
 ## 1. 分支与合并
 
-- 所有工作在 `claude/agent-refactor` 分支（或其子分支）进行。
-- **未经用户明确许可，禁止向 `main` 合并任何内容。**
-- 每个里程碑完成后向用户提请 PR 评审。
+- 重构完成（arch-refactor 已并入 `main`）后，开发直接在 `main` 分支进行。
+- 提交前跑全量测试 + ruff；提交信息含「事实 + 影响面 + 验证」摘要。
+- 推送远端前确认工作区干净、无未提交改动。
 
-## 2. 绞杀式迁移规则（重构期核心纪律）
+## 2. 变更纪律
 
-1. **先立后破**：新路径端到端验证通过之前，不删除旧路径。
-2. **删除即彻底**：决定删除的模块一次删干净（代码 + 端点 + 前端调用 + 测试 + 文档引用），不留注释掉的尸体、不留「以防万一」的兼容垫片。删除前用 `git grep` 确认零引用。
-3. **不修缮死刑犯**：已列入删除清单的模块（见 `02-architecture.md`）只做让它继续运行的最小改动，禁止重构、禁止补测试。
-4. **保留模块不顺手改**：标注「原样保留」的模块在 M0–M2 期间只允许改 import 路径。
-5. **每个 session 结束时仓库可运行**：`pytest` 全绿 + 前端 build 通过，否则不结束。
+1. **删除即彻底**：决定删除的模块一次删干净（代码 + 端点 + 调用方 + 测试 + 文档引用），不留注释掉的尸体、不留「以防万一」的兼容垫片。删除前用 `git grep` 确认零引用。
+2. **每个 session 结束时仓库可运行**：`pytest` 全绿 + ruff 全过，否则不结束。
+3. **外科手术**：只改任务要求的代码；发现无关死代码先提出、不顺手删。
 
 ## 3. 依赖方向
 
@@ -38,16 +36,12 @@ api → agent → tools → domain → models
 ## 5. 验证命令（每次声称完成前必须实际运行）
 
 ```bash
-# 后端全量回归
+# 后端全量回归 + lint
 cd backend && python -m pytest tests/ -q
+cd backend && python -m ruff check .
 
-# 新内核专项（M1 起）
-cd backend && python -m pytest tests/agent/ -q
-
-# 前端
+# 前端（重写后）
 cd frontend && npm run build && npm run test
-
-# 里程碑验收（按 03-roadmap.md 各阶段退出标准逐条执行并记录证据）
 ```
 
 ## 6. 工具设计规范
@@ -66,9 +60,11 @@ cd frontend && npm run build && npm run test
 
 ## 8. 文档纪律
 
-- `05-progress-tracker.md` 每个 session 结束前更新（完成项、阻塞、下一步）。
+- **设计定稿**（需求讨论 + 评审后）写入 claude-guide（`09`/`11` 编号模式），实现后更新文档状态。
 - 重要架构决策当场写入 `06-decisions.md`（一段话即可，拒绝事后补写）。
-- 一次性记录（dogfood 报告、实验数据）放 `docs/archive/dogfood/`，不污染 claude-guide。
+- **活跃进度**由 trellis 任务承担，不再维护进度日志文档（旧进度日志已归档）。
+- 一次性记录（dogfood 报告、实验数据）放 `docs/archive/`，不污染 claude-guide。
+- 已完成阶段的规划/研究文档归档到 `docs/archive/claude-guide-legacy/`，不留占位。
 
 ## 9. 处理与用户的协作
 

@@ -141,4 +141,4 @@ POST /api/v2/agent/sessions/{id}/messages
 | `11-plotline-ledger.md` | 伏笔账本设计定稿 |
 | `10-frontend-api-contract.md` | 前后端对接契约（9 端点 + SSE 事件 + 7 表） |
 | `08-learning-absorption.md` | 三开源项目吸收清单（hermes/openhuman/openclaw） |
-| `05-progress-tracker.md` | 200 章实验验证记录 |
+| `../archive/claude-guide-legacy/05-progress-tracker.md` | 重构期进度与 200 章实验验证记录（归档） |

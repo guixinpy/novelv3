@@ -20,8 +20,9 @@
 下载日期：2026-08-01（2026-06-11 旧快照已替换）
 
 > 目录已于 2026-08-01 从 `docs/archive/references/` 移出到 `docs/references/`
-> （后续长期作为活跃参考使用；`docs/claude-guide/07-reference-takeaways.md`
-> 的 `references/agent-projects/` 引用即指向本目录）。
+> （后续长期作为活跃参考使用；`docs/claude-guide/08-learning-absorption.md`
+> 的 `references/agent-projects/` 引用即指向本目录。第一轮提炼稿
+> `docs/archive/claude-guide-legacy/07-reference-takeaways.md` 已归档）。
 
 ## 后续使用方式
 

@@ -1,33 +1,42 @@
 # Claude 开发指导文档集（claude-guide）
 
-本目录是项目新方向的**唯一权威规划文档**，作用等同于上一版的 `codex-guide`（已归档至 `../archive/codex-guide/`）。每次开发 session 开始时，按以下顺序阅读：
+本目录是项目方向的**权威文档集**：只放「现状、方向、规则、决策、活跃设计」，
+不含已完成阶段的历史与过程记录（归档于 `../archive/claude-guide-legacy/`）。
 
-1. **`05-progress-tracker.md`** —— 当前进度与下一步（每次必读，每次必更新）
-2. **`01-vision.md`** —— 项目重新定义与北极星目标
-3. **`03-roadmap.md`** —— 分阶段路线图与每阶段验收标准
+每次开发 session 开始时，按以下顺序阅读：
+
+1. **`00-backend-architecture.md`** —— 后端架构总览（现状，必读）
+2. **`01-vision.md`** —— 项目定位与北极星目标
+3. **`04-development-rules.md`** —— 开发规则（测试纪律/依赖方向/协作约束）
 4. 其余文档按需查阅
 
 ## 文档清单
 
 | 文档 | 内容 | 更新频率 |
 | --- | --- | --- |
-| `01-vision.md` | 项目重新定义：novelv3 是什么、不是什么、成熟度阶梯 | 方向变化时 |
-| `02-architecture.md` | 目标架构：Agent 内核、工具系统、记忆系统、保留/删除清单 | 架构决策时 |
-| `03-roadmap.md` | M0–M5 分阶段路线图，每阶段有可验证的退出标准 | 阶段推进时 |
-| `04-development-rules.md` | 开发规则：测试纪律、文件预算、验证命令、绞杀式迁移规则 | 规则变化时 |
-| `05-progress-tracker.md` | 活跃进度追踪（唯一可频繁改动的文档） | **每次 session** |
-| `06-decisions.md` | 新架构决策记录（ADR），含对旧 ADR 的继承/推翻判定 | 决策时 |
-| `07-reference-takeaways.md` | 三个参考项目的核心优点提炼与本项目的适配方案 | 基本只读 |
+| `00-backend-architecture.md` | 后端架构总览：三层分层、模块职责、数据流、数据表 | 架构变化时 |
+| `01-vision.md` | 项目重新定义：novelv3 是什么、不是什么、北极星目标 | 方向变化时 |
+| `04-development-rules.md` | 开发规则：测试纪律、依赖方向、验证命令、文档纪律 | 规则变化时 |
+| `06-decisions.md` | 架构决策记录（ADR，CADR-001 起） | 决策时 |
+| `08-learning-absorption.md` | 三开源项目学习吸收定稿（hermes/openhuman/openclaw） | 基本只读 |
+| `09-per-book-self-optimization.md` | 自优化系统设计定稿（自省/信任度/注入） | 设计变更时 |
+| `10-frontend-api-contract.md` | 前后端对接契约（端点 + SSE 事件 + 数据表） | 接口变更时 |
+| `11-plotline-ledger.md` | 伏笔账本设计定稿 | 设计变更时 |
 
-## 与旧文档的关系
+## 归档（`../archive/claude-guide-legacy/`）
 
-- `../archive/codex-guide/` 是上一版（Codex 时期）的指导文档，**仅作历史参考**，与本目录冲突时以本目录为准。
-- 上一版的制度记忆（已完成什么、踩过什么坑、为什么做某决策）已经吸收进本目录各文档，正常开发不需要回读归档。
-- 例外：`06-decisions.md` 中标注「继承」的旧 ADR，其完整论证仍在 `../archive/codex-guide/06-architecture-decisions.md`。
+已完成阶段的历史文档，仅作回溯参考，**新工作不依赖**：
 
-## 核心原则（一句话版）
+- `02-architecture.md` —— arch-refactor 目标架构规划（已实现，现状见 00）
+- `03-roadmap.md` —— M0–M5 路线图（已全部完成）
+- `05-progress-tracker.md` —— 重构期进度日志（活跃进度由 trellis 任务承担）
+- `07-reference-takeaways.md` —— 参考项目第一轮提炼（已被 08 吸收）
+- `m5-memory-research.md` —— M5 记忆系统研究笔记（结论已入 07/08）
 
-> 把 novelv3 从「带 LLM 调用的确定性工作流引擎」翻转为「模型驱动的工具调用 Agent」，
-> 保留上一版用真实 dogfood 换来的护栏（循环风险检测、审批门、溯源、预算），
-> 删除模拟 Agent 的脚本化编排层，
-> 最终长成一个能稳定写百万字网文的专业 Agent。
+更早的 `../archive/codex-guide/` 是 Codex 时期文档，仅作历史参考。
+
+## 文档纪律
+
+- **设计定稿**（需求讨论 + 评审后）：写入 claude-guide（09/11 模式），实现后更新状态
+- **活跃进度**：trellis 任务 + 记忆系统承担，不再维护进度日志文档
+- **一次性记录**（dogfood 报告、实验数据）：放 `docs/archive/`，不污染 claude-guide
