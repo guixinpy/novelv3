@@ -32,6 +32,7 @@ from core.events import (
     TurnEnded,
 )
 from core.guards.budget import IterationBudget, TokenBudget
+from core.guards.loop_guards import GuardSystem
 from core.loop import BeforeToolCall, EventSink, run_turn
 from core.providers.base import Provider
 from core.session.transcript import Transcript, strip_api_fields
@@ -91,6 +92,7 @@ class AgentHarness:
         approval_gate: ApprovalGate | None = None,
         snapshot_provider: SnapshotProvider | None = None,
         injection_provider: InjectionProvider | None = None,
+        guard_system: GuardSystem | None = None,
     ) -> None:
         self.session_id = session_id
         self.provider = provider
@@ -101,6 +103,9 @@ class AgentHarness:
         self.approval_gate = approval_gate
         self._snapshot_provider = snapshot_provider
         self._injection_provider = injection_provider
+        # 护栏注入化（openclaw 钩子化）：转发给 run_turn——此前注入点只存在于
+        # loop 层，harness 不转发导致生产不可达（死扩展点，吸收核查发现）
+        self._guard_system = guard_system
         self.transcript = Transcript(Path(session_dir) / f"{session_id}.jsonl")
         # 实例级压缩状态（修旧版模块级全局缺陷）
         self._compaction_state = CompactionState()
@@ -306,6 +311,7 @@ class AgentHarness:
             extra_provider_kwargs=self.config.provider_kwargs,
             max_wall_clock_ms=self.config.max_wall_clock_ms,
             compacted=compacted_this_turn,
+            guard_system=self._guard_system,
         )
         # 持久化新消息（sidecar：剥离 api_content 等发送专用字段；ephemeral 消息
         # 整条不落盘——code-review #8：nudge 等临时注入曾成为 transcript 永久消息

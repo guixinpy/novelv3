@@ -142,7 +142,11 @@ def _create_harness(session_id: str, meta: dict, db: Session, gate: ApprovalGate
         ),
         before_tool_call=gate.before_tool_call if gate is not None else None,
         approval_gate=gate,
-        snapshot_provider=lambda: build_project_snapshot(db, meta["project_id"]),
+        # include_experience 接 SELF_OPTIMIZE 开关（吸收核查：此前开关只挡自省
+        # 调用，快照经验段仍无条件注入——半接线）
+        snapshot_provider=lambda: build_project_snapshot(
+            db, meta["project_id"], include_experience=SELF_OPTIMIZE_ENABLED
+        ),
     )
     return harness
 

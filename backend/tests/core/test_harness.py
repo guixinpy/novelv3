@@ -152,6 +152,31 @@ async def test_concurrent_send_serialized(tmp_path):
     assert roles.count("user") == 2
 
 
+async def test_guard_system_forwarded_to_run_turn(tmp_path):
+    """护栏注入化：harness 层 guard_system 参数真实转发给 run_turn（吸收核查：
+    此前注入点只在 loop 层，harness 不转发导致生产不可达）。"""
+    from core.guards.loop_guards import GuardResult, GuardSystem
+
+    class AlwaysTripGuard(GuardSystem):
+        def check(self, max_iterations: int = 30) -> GuardResult:
+            return GuardResult(tripped=True, level="X", reason="自定义护栏", diagnosis={"level": "X"})
+
+    harness = make_harness(
+        tmp_path,
+        [{"content": "", "tool_calls": [{"name": "echo", "arguments": {}}]}, {"content": "不会到达"}],
+        guard_system=AlwaysTripGuard(),
+    )
+    events = await drain(harness, "写")
+    # 自定义护栏触发 → guard_tripped 事件 + 回合结束（不再调用 provider）
+    from core.events import GuardTripped
+
+    assert any(isinstance(e, GuardTripped) and e.level == "X" for e in events)
+    from core.loop import StopReason
+
+    turn_ended = next(e for e in events if e.kind.value == "turn_ended")
+    assert turn_ended.stop_reason == StopReason.GUARD_TRIPPED.value
+
+
 async def test_empty_response_nudge_not_persisted(tmp_path):
     """code-review #8（二轮）：空响应 nudge 是临时注入——不落盘、不重放。"""
     harness = make_harness(
