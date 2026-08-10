@@ -4,10 +4,15 @@
 发射 ApprovalPending 事件并等待人工 approve/reject；超时自动拒绝（fail-closed）。
 
 会话级实例：由 API 层持有（一个会话一个 gate），与 harness 同生命周期。
+
+线程安全（flaky 根治）：等待用 threading.Event + asyncio.to_thread——
+approve/reject 可从任意线程调用（HTTP 端点跑在线程池、测试线程直调），
+asyncio.Event.set 跨线程是未定义行为（实测偶发丢失唤醒导致审批永不放行）。
 """
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -24,7 +29,7 @@ class ApprovalGate:
         self._registry = registry
         self._timeout = timeout_seconds
         self._emit: Callable[[LoopEvent], Awaitable[None] | None] | None = None
-        self._pending: dict[str, asyncio.Event] = {}
+        self._pending: dict[str, threading.Event] = {}
         self._decisions: dict[str, bool] = {}
         self._reasons: dict[str, str] = {}
         self._pending_info: dict[str, dict[str, Any]] = {}
@@ -50,7 +55,7 @@ class ApprovalGate:
             return None
 
         call_id = uuid.uuid4().hex[:12]
-        event = asyncio.Event()
+        event = threading.Event()
         self._pending[call_id] = event
         self._pending_info[call_id] = {"name": name, "arguments": arguments or {}, "status": "pending"}
 
@@ -59,18 +64,18 @@ class ApprovalGate:
             if outcome is not None:
                 await outcome
 
-        try:
-            await asyncio.wait_for(event.wait(), timeout=self._timeout)
-        except TimeoutError:
+        # threading.Event.wait 线程安全（approve 可从 HTTP 线程/测试线程调用）；
+        # 超时返回 False（等待线程自行退出，不泄漏）
+        decided = await asyncio.to_thread(event.wait, self._timeout)
+        if not decided:
             # 超时自动拒绝（fail-closed），防 SSE 无限挂起
             approved = False
             reason = "审批等待超时（10 分钟未决策），已自动拒绝。"
         else:
             approved = self._decisions.pop(call_id, False)
             reason = self._reasons.pop(call_id, "")
-        finally:
-            self._pending.pop(call_id, None)
-            self._pending_info.pop(call_id, None)
+        self._pending.pop(call_id, None)
+        self._pending_info.pop(call_id, None)
 
         if approved:
             return None

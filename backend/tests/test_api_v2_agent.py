@@ -2,6 +2,13 @@
 
 会话持有 harness 实例（修复每请求重建缺陷）：steer/followup/幂等/写锁跨请求生效，
 测试用 scripted provider 记录请求形状做真实断言（不再空转通过）。
+
+审批测试：send 用独立 daemon 线程（完整读 SSE body），审批直接操作内存 gate
+（agent_api._sessions[sid]["gate"].approve，不经过 HTTP）——ApprovalGate 已改为
+线程安全（threading.Event + asyncio.to_thread），跨线程 approve 可靠。
+注意：httpx ASGITransport 不流式（等 app 完成才返回），async 流式审批不可行；
+sync TestClient 流式 + HTTP 嵌套审批在 Windows 有 portal 竞态——均不可用。
+daemon=True：测试失败时线程不阻塞进程退出。
 """
 from __future__ import annotations
 
@@ -28,6 +35,29 @@ def mock_provider_factory(monkeypatch):
             return self.provider
 
     return Handle()
+
+
+def _send_with_auto_approval(client, sid: str, content: str, timeout: float = 15.0):
+    """线程发送并自动批准所有 write 审批（直接操作线程安全的内存 gate）。"""
+    result = {}
+
+    def send_in_thread():
+        result["resp"] = client.post(
+            f"/api/v2/agent/sessions/{sid}/messages", json={"content": content}
+        )
+
+    t = threading.Thread(target=send_in_thread, daemon=True)
+    t.start()
+    deadline = time.time() + timeout
+    while time.time() < deadline and result.get("resp") is None:
+        session = agent_api._sessions.get(sid)
+        if session is not None:
+            for item in session["gate"].pending_requests():
+                session["gate"].approve(item["call_id"])
+        time.sleep(0.01)
+    t.join(timeout=5)
+    assert result.get("resp") is not None, "send 未在超时内完成"
+    return result["resp"]
 
 
 def _create_project(client) -> str:
@@ -79,29 +109,6 @@ def test_send_message_sse_stream(client, mock_provider_factory, tmp_path, monkey
     assert "event_id" in body
     # 单一 agent_start（不重复）
     assert body.count("event: agent_start") == 1
-
-
-def _send_with_auto_approval(client, sid: str, content: str, timeout: float = 10.0):
-    """发送消息并自动批准所有 write 审批（write 工具经审批门拦截后放行）。"""
-    result = {}
-
-    def send_in_thread():
-        result["resp"] = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": content})
-
-    t = threading.Thread(target=send_in_thread)
-    t.start()
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
-        if pr.status_code == 200:
-            for item in pr.json()["pending"]:
-                client.post(f"/api/v2/agent/sessions/{sid}/approve", params={"call_id": item["call_id"]})
-        if result.get("resp") is not None:
-            break
-        time.sleep(0.02)
-    t.join(timeout=5)
-    assert result["resp"] is not None, "send 未在超时内完成"
-    return result["resp"]
 
 
 def test_send_message_uses_tools_and_persists(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
@@ -170,7 +177,7 @@ def test_steer_reaches_model(client, mock_provider_factory, tmp_path, monkeypatc
 
 
 def test_write_tool_requires_approval(client, mock_provider_factory, tmp_path, monkeypatch):
-    """审批门（P1-6）：write 工具被拦截，未批准不执行。"""
+    """审批门（P1-6）：write 工具被拦截，未批准不执行（gate 内存审批，线程安全）。"""
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
     mock_provider_factory.script(
         [
@@ -186,20 +193,19 @@ def test_write_tool_requires_approval(client, mock_provider_factory, tmp_path, m
     def send_in_thread():
         result["resp"] = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写"})
 
-    t = threading.Thread(target=send_in_thread)
+    t = threading.Thread(target=send_in_thread, daemon=True)
     t.start()
-    for _ in range(50):
-        pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
-        if pr.status_code == 200 and pr.json()["pending"]:
+    # 等待拦截真实发生（gate 出现 pending）
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        session = agent_api._sessions.get(sid)
+        if session is not None and session["gate"].pending_requests():
             break
-        time.sleep(0.05)
-    pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
-    assert pr.status_code == 200
-    pending = pr.json()["pending"]
+        time.sleep(0.02)
+    pending = agent_api._sessions[sid]["gate"].pending_requests()
     assert pending, "write 工具应被审批门拦截"
     call_id = pending[0]["call_id"]
-    ar = client.post(f"/api/v2/agent/sessions/{sid}/approve", params={"call_id": call_id})
-    assert ar.status_code == 200
+    assert agent_api._sessions[sid]["gate"].approve(call_id)
     t.join(timeout=10)
     assert result["resp"].status_code == 200
     assert "等待批准后继续" in result["resp"].text
@@ -223,10 +229,27 @@ def test_unknown_session_404(client):
     assert r.status_code == 404
 
 
+def test_approval_pending_emitted_once(client, mock_provider_factory, tmp_path, monkeypatch):
+    """R1 回归：ApprovalPending 只发一次（此前双队列双发，SSE 出现两次）。"""
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    mock_provider_factory.script(
+        [
+            {"content": "", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文。" * 20}}]},
+            {"content": "继续", "tool_calls": []},
+        ]
+    )
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+
+    body = _send_with_auto_approval(client, sid, "写").text
+    # SSE 流中 approval_pending 恰好一次
+    assert body.count("event: approval_pending") == 1, f"approval_pending 出现 {body.count('event: approval_pending')} 次"
+
+
 def test_send_writes_chapter_then_introspects(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
     """09 触发点 2（生产路径）：写完章节后自动章末自省并写入写作经验。
 
-    自省响应是 script 的第 3 步（harness 2 步 + 自省 1 步）；幂等保证重复 send 不重复自省。
+    自省响应是 script 的第 3 步（harness 2 步 + 自省 1 步）。
     """
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
     from app.models import LongformMemory
@@ -279,37 +302,3 @@ def test_send_without_chapter_skips_introspect(client, mock_provider_factory, tm
         .all()
     )
     assert exp == []
-
-
-def test_approval_pending_emitted_once(client, mock_provider_factory, tmp_path, monkeypatch):
-    """R1 回归：ApprovalPending 只发一次（此前双队列双发，SSE 出现两次）。"""
-    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
-    mock_provider_factory.script(
-        [
-            {"content": "", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文。" * 20}}]},
-            {"content": "继续", "tool_calls": []},
-        ]
-    )
-    project_id = _create_project(client)
-    sid = _create_session(client, project_id)
-
-    result = {}
-
-    def send_in_thread():
-        result["resp"] = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写"})
-
-    t = threading.Thread(target=send_in_thread)
-    t.start()
-    for _ in range(50):
-        pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
-        if pr.status_code == 200 and pr.json()["pending"]:
-            break
-        time.sleep(0.05)
-    pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
-    pending = pr.json()["pending"]
-    assert pending
-    client.post(f"/api/v2/agent/sessions/{sid}/approve", params={"call_id": pending[0]["call_id"]})
-    t.join(timeout=10)
-    body = result["resp"].text
-    # SSE 流中 approval_pending 恰好一次
-    assert body.count("event: approval_pending") == 1, f"approval_pending 出现 {body.count('event: approval_pending')} 次"
