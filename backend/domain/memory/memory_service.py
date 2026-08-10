@@ -37,40 +37,22 @@ def _channel_limits_desc() -> str:
 
 
 def _cap_by_channel(memories: list, global_limit: int) -> list:
-    """按通道配额轮询截断（code-review 三轮 #5：此前按合并顺序先到先得，
-    默认 limit=5 时先出现的通道耗尽全部额度、低频通道仍零代表——轮询保证
-    每通道都有份额，直到全局满额）。
+    """按通道配额轮询截断（code-review 三轮 #5：先到先得会让高频通道耗尽
+    全部额度、低频通道零代表——轮询保证每通道都有份额，直到全局满额）。
 
-    保持输入排序（更新时间倒序 + author_explicit 优先）：轮询是"取该通道
-    当前位置的下一条"，不重排。
+    简化（simplify）：每轮每通道取第 i 条（i 同时充当游标与通道配额上限），
+    保持输入排序（更新时间倒序 + author_explicit 优先）。
     """
-    counts: dict[str, int] = {}
-    capped: list = []
-    # 轮询：按通道分组索引，每轮每通道取 1 条（未达配额），直到全局满额
     by_channel: dict[str, list] = {}
-    order: list[str] = []
     for m in memories:
-        ch = m.memory_type
-        if ch not in by_channel:
-            by_channel[ch] = []
-            order.append(ch)
-        by_channel[ch].append(m)
-    cursor = {ch: 0 for ch in order}
-    filled = True
-    while filled and len(capped) < global_limit:
-        filled = False
-        for ch in order:
+        by_channel.setdefault(m.memory_type, []).append(m)
+    capped: list = []
+    for i in range(global_limit):
+        for ch, items in by_channel.items():
             if len(capped) >= global_limit:
                 break
-            if counts.get(ch, 0) >= _channel_limit(ch):
-                continue
-            idx = cursor[ch]
-            if idx >= len(by_channel[ch]):
-                continue
-            capped.append(by_channel[ch][idx])
-            cursor[ch] = idx + 1
-            counts[ch] = counts.get(ch, 0) + 1
-            filled = True
+            if i < _channel_limit(ch) and i < len(items):
+                capped.append(items[i])
     return capped
 
 
@@ -361,6 +343,33 @@ def query_memory(
 # ── plan_arc ──
 
 
+def _arc_span_chapters(db: Session, project_id: str, arc) -> list:
+    """弧线跨度内章节（升序）——simplify：三处拷贝收敛的共享 helper。"""
+    return (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index >= (arc.start_chapter_index or 1),
+            ChapterContent.chapter_index <= (arc.end_chapter_index or 1),
+        )
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+
+
+def _bind_arc_meta(mem, arc_id) -> None:
+    """arc_summary 行绑定弧线并清聚合标记（simplify：三处拷贝收敛的共享 helper）。
+
+    code-review 三轮 #8：同名弧线共享 scope_key=title，覆盖时保留旧 aggregated
+    标记会造成"文本=清单版、标记=已聚合"错配。
+    """
+    meta = dict(mem.memory_metadata or {})
+    meta.pop("aggregated", None)
+    meta.pop("aggregate_failed", None)
+    meta["arc_id"] = arc_id
+    mem.memory_metadata = meta
+
+
 def _close_active_arcs(db: Session, project_id: str) -> None:
     """关闭所有活跃弧线并生成 arc_summary（define 新弧线时的前置动作）。"""
     active = (
@@ -374,16 +383,7 @@ def _close_active_arcs(db: Session, project_id: str) -> None:
     )
     for a in active:
         a.status = "completed"
-        chs = (
-            db.query(ChapterContent)
-            .filter(
-                ChapterContent.project_id == project_id,
-                ChapterContent.chapter_index >= (a.start_chapter_index or 1),
-                ChapterContent.chapter_index <= (a.end_chapter_index or 1),
-            )
-            .order_by(ChapterContent.chapter_index.asc())
-            .all()
-        )
+        chs = _arc_span_chapters(db, project_id, a)
         ch_titles = ", ".join(c.title for c in chs if c.title) or "(无标题)"
         arc_summary_text = (
             f"弧线「{a.title}」完成。"
@@ -412,11 +412,7 @@ def _close_active_arcs(db: Session, project_id: str) -> None:
         mem.start_chapter_index = a.start_chapter_index
         mem.end_chapter_index = a.end_chapter_index
         mem.status = "completed"
-        _meta = dict(mem.memory_metadata or {})
-        _meta.pop("aggregated", None)
-        _meta.pop("aggregate_failed", None)
-        _meta["arc_id"] = a.id
-        mem.memory_metadata = _meta
+        _bind_arc_meta(mem, a.id)
 
 
 def plan_arc(
@@ -541,16 +537,7 @@ def plan_arc(
             )
         elif remaining <= 0:
             active_arc.status = "completed"
-            chs = (
-                db.query(ChapterContent)
-                .filter(
-                    ChapterContent.project_id == project_id,
-                    ChapterContent.chapter_index >= (active_arc.start_chapter_index or 1),
-                    ChapterContent.chapter_index <= (active_arc.end_chapter_index or 1),
-                )
-                .order_by(ChapterContent.chapter_index.asc())
-                .all()
-            )
+            chs = _arc_span_chapters(db, project_id, active_arc)
             ch_titles = ", ".join(c.title for c in chs if c.title) or "(无标题)"
             arc_summary = (
                 f"弧线「{active_arc.title}」完成。"
@@ -577,11 +564,7 @@ def plan_arc(
             mem.start_chapter_index = active_arc.start_chapter_index
             mem.end_chapter_index = active_arc.end_chapter_index
             mem.status = "completed"
-            _meta = dict(mem.memory_metadata or {})
-            _meta.pop("aggregated", None)
-            _meta.pop("aggregate_failed", None)
-            _meta["arc_id"] = active_arc.id
-            mem.memory_metadata = _meta
+            _bind_arc_meta(mem, active_arc.id)
             db.commit()
             result["arc_consolidated"] = True
             result["arc_summary"] = arc_summary
@@ -664,16 +647,7 @@ async def aggregate_arc_summary(
         elif meta0.get("aggregate_failed"):
             return {"status": "skipped", "reason": "aggregate_failed_earlier"}
 
-    chapters = (
-        db.query(ChapterContent)
-        .filter(
-            ChapterContent.project_id == project_id,
-            ChapterContent.chapter_index >= (arc.start_chapter_index or 1),
-            ChapterContent.chapter_index <= (arc.end_chapter_index or 1),
-        )
-        .order_by(ChapterContent.chapter_index.asc())
-        .all()
-    )
+    chapters = _arc_span_chapters(db, project_id, arc)
     chapter_notes = [
         f"Ch{c.chapter_index}《{c.title}》：{(c.content or '')[:120]}…" for c in chapters[:15]
     ]
@@ -725,11 +699,11 @@ async def aggregate_arc_summary(
 
 def _mark_aggregate_failed(db: Session, arc_summary, arc, *, reason: str) -> None:
     """聚合失败落标记（code-review 三轮 #7：无标记 → 每次 send 无限重试烧成本）。"""
-    meta = dict(arc_summary.memory_metadata or {}) if arc_summary is not None else {}
-    meta["aggregate_failed"] = True
-    meta["aggregate_failed_reason"] = reason
-    meta["arc_id"] = arc.id
     if arc_summary is not None:
+        _bind_arc_meta(arc_summary, arc.id)
+        meta = dict(arc_summary.memory_metadata or {})
+        meta["aggregate_failed"] = True
+        meta["aggregate_failed_reason"] = reason
         arc_summary.memory_metadata = meta
         db.commit()
 

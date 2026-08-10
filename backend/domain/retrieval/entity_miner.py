@@ -114,6 +114,27 @@ def mine_entities_from_text(text: str) -> list[str]:
     return candidates
 
 
+def _commit_with_race_retry(db: Session, *, requery, keys: list, chapter_index: int, count_attr: str) -> None:
+    """commit 撞唯一约束（并发插入同键）→ 回滚后重试一次（simplify：两处拷贝收敛）。
+
+    重查会命中对方已插入的行（走 bump 分支），不丢本批其他行（code-review 三轮 #6：
+    此前整批 rollback 丢弃同批已成功行且计数失真）。
+    """
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = requery()
+        for key in keys:
+            entry = existing.get(key)
+            if entry is None:
+                continue  # 仍不存在（罕见）：放弃该行，不炸
+            if entry.last_chapter != chapter_index:
+                setattr(entry, count_attr, (getattr(entry, count_attr) or 1) + 1)
+            entry.last_chapter = chapter_index
+        db.commit()
+
+
 def register_entity_candidates(
     db: Session,
     project_id: str,
@@ -156,14 +177,9 @@ def register_entity_candidates(
             entry.last_chapter = chapter_index
             if entry.first_chapter is None:
                 entry.first_chapter = chapter_index
-    try:
-        db.commit()
-    except IntegrityError:
-        # 并发写同实体：后提交者撞唯一约束（code-review #14）——回滚后重试一次：
-        # 重查会命中对方已插入的行（走 update 分支），不丢本批其他候选
-        # （code-review 三轮 #6：此前整批 rollback 丢弃同批已成功行且计数失真）
-        db.rollback()
-        existing2 = {
+    _commit_with_race_retry(
+        db,
+        requery=lambda: {
             e.name: e
             for e in db.query(EntityCandidate)
             .filter(
@@ -171,15 +187,11 @@ def register_entity_candidates(
                 EntityCandidate.name.in_(unique),
             )
             .all()
-        }
-        for name in unique:
-            entry = existing2.get(name)
-            if entry is None:
-                continue  # 仍不存在（罕见）：放弃该行，不炸
-            if entry.last_chapter != chapter_index:
-                entry.chapter_count = (entry.chapter_count or 1) + 1
-            entry.last_chapter = chapter_index
-        db.commit()
+        },
+        keys=list(unique),
+        chapter_index=chapter_index,
+        count_attr="chapter_count",
+    )
     return added
 
 
@@ -241,14 +253,9 @@ def record_entity_cooccurrences(
             if entry.last_chapter != chapter_index:
                 entry.count = (entry.count or 1) + 1
             entry.last_chapter = chapter_index
-    try:
-        db.commit()
-    except IntegrityError:
-        # 并发写同对共现：后提交者撞唯一约束（code-review #14）——回滚后重试一次：
-        # 重查命中对方已插入的边（走 count+1 分支），不丢本批其他边
-        # （code-review 三轮 #6：此前整批 rollback 丢数据且计数失真）
-        db.rollback()
-        existing2 = {
+    _commit_with_race_retry(
+        db,
+        requery=lambda: {
             (r.entity_a, r.entity_b): r
             for r in db.query(EntityRelation)
             .filter(
@@ -256,15 +263,11 @@ def record_entity_cooccurrences(
                 tuple_(EntityRelation.entity_a, EntityRelation.entity_b).in_(pairs),
             )
             .all()
-        }
-        for a, b in pairs:
-            entry = existing2.get((a, b))
-            if entry is None:
-                continue  # 仍不存在（罕见）：放弃该边，不炸
-            if entry.last_chapter != chapter_index:
-                entry.count = (entry.count or 1) + 1
-            entry.last_chapter = chapter_index
-        db.commit()
+        },
+        keys=list(pairs),
+        chapter_index=chapter_index,
+        count_attr="count",
+    )
     return added
 
 

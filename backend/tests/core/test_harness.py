@@ -177,6 +177,22 @@ async def test_guard_system_forwarded_to_run_turn(tmp_path):
     assert turn_ended.stop_reason == StopReason.GUARD_TRIPPED.value
 
 
+async def test_ephemeral_follow_up_not_persisted(tmp_path):
+    """simplify 层次 F1：ephemeral follow-up（恢复建议）不落盘——Transcript
+    append 单点拦截，重启后不重放。"""
+    harness = make_harness(
+        tmp_path,
+        [{"content": "第一轮回复"}, {"content": "第二轮回复"}],
+    )
+    harness.queue_follow_up("内部恢复建议", ephemeral=True)
+    await drain(harness, "开始")
+    # 第一回合后注入的 ephemeral follow-up 作为第二回合 user 消息——不落盘
+    transcript = Transcript(tmp_path / "s1.jsonl")
+    assert not any("内部恢复建议" in str(m.get("content", "")) for m in transcript.messages)
+    # 用户原始消息正常落盘
+    assert any(m.get("role") == "user" and m.get("content") == "开始" for m in transcript.messages)
+
+
 async def test_empty_response_nudge_not_persisted(tmp_path):
     """code-review #8（二轮）：空响应 nudge 是临时注入——不落盘、不重放。"""
     harness = make_harness(

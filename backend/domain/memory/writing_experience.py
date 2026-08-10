@@ -71,6 +71,33 @@ def _ts_sort_key(ts) -> datetime:
     return ts.replace(tzinfo=None) if ts.tzinfo else ts
 
 
+def _find_experience(db: Session, project_id: str, key: str):
+    """按键查找经验（simplify：apply/delete/pin 三处拷贝收敛）。"""
+    return (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == EXPERIENCE_TYPE,
+            LongformMemory.scope_key == key,
+        )
+        .first()
+    )
+
+
+def _active_experience_rows(db: Session, project_id: str, category: str) -> list:
+    """该类目 active 经验行（simplify：candidate/decay/budget 三处拷贝收敛）。"""
+    return (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == EXPERIENCE_TYPE,
+            LongformMemory.memory_metadata["category"].as_string() == category,
+            LongformMemory.status == _ACTIVE,
+        )
+        .all()
+    )
+
+
 def _candidate_keys(db: Session, project_id: str, category: str, limit: int = _KEY_CANDIDATE_COUNT) -> list[str]:
     """该类目最近强化的经验键（自省提示词携带，防 key 漂移导致 override 永不生效）。"""
     rows = (
@@ -139,15 +166,7 @@ def apply_experiences(
             applied["skipped"] += 1
             continue
         seen_keys.add(key)
-        entry = (
-            db.query(LongformMemory)
-            .filter(
-                LongformMemory.project_id == project_id,
-                LongformMemory.memory_type == EXPERIENCE_TYPE,
-                LongformMemory.scope_key == key,
-            )
-            .first()
-        )
+        entry = _find_experience(db, project_id, key)
         if entry is None:
             # 新建（new；显式 reinforce 但键不存在时也按 new 兜底）
             db.add(
@@ -177,30 +196,28 @@ def apply_experiences(
             applied["skipped"] += 1
             continue
         trust = int(meta.get("trust_score", _TRUST_INITIAL))
+        # 分支合并（simplify）：override/reinforce 共享尾部（summary/trust 写回/
+        # 强化章/归档复活语义统一）
         if action == "override":
-            # 推翻：旧经验降权，新文本覆盖；trust≤0 → 归档（≤0 不再注入不变量）
-            entry.summary = text
+            # 推翻：旧经验降权，新文本覆盖
+            trust = max(0, trust - 1)
             entry.title = f"[{category}] {key}"
-            meta["trust_score"] = max(0, trust - 1)
-            meta["last_reinforce_chapter_index"] = chapter_index
             applied["override"] += 1
-            if meta["trust_score"] <= 0:
-                entry.status = _ARCHIVED
-            elif entry.status == _ARCHIVED:
-                entry.status = _ACTIVE
         else:
             # 归档条目被 action=new 偶然碰撞（预算淘汰/衰减后同 key 复现）——
             # 不复活（code-review #9：候选键不含归档键，属 LLM 键碰撞）
             if entry.status == _ARCHIVED and action == "new":
                 applied["skipped"] += 1
                 continue
-            meta["trust_score"] = min(trust + 1, 99)
-            entry.summary = text
-            meta["last_reinforce_chapter_index"] = chapter_index
+            trust = min(trust + 1, 99)
             applied["reinforce"] += 1
-            # 归档复活（code-review #5）：被衰减归档的经验再次强化时恢复注入
-            if entry.status == _ARCHIVED:
-                entry.status = _ACTIVE
+        entry.summary = text
+        meta["trust_score"] = trust
+        meta["last_reinforce_chapter_index"] = chapter_index
+        if trust <= 0:
+            entry.status = _ARCHIVED  # ≤0 不再注入不变量
+        elif entry.status == _ARCHIVED:
+            entry.status = _ACTIVE  # 归档复活（code-review #5）
         entry.memory_metadata = meta
         entry.updated_at = _now()
 
@@ -223,17 +240,7 @@ def _decay_stale(db: Session, project_id: str, category: str, chapter_index: int
     last_reinforce 伪造「Ch35验证」锚点、把过期经验当最近注入）；last=0 的
     旧条目（从未强化）按距当前章 30 章衰减，不再永久豁免。
     """
-    rows = (
-        db.query(LongformMemory)
-        .filter(
-            LongformMemory.project_id == project_id,
-            LongformMemory.memory_type == EXPERIENCE_TYPE,
-            LongformMemory.memory_metadata["category"].as_string() == category,
-            LongformMemory.status == _ACTIVE,
-        )
-        .all()
-    )
-    for entry in rows:
+    for entry in _active_experience_rows(db, project_id, category):
         meta = dict(entry.memory_metadata or {})
         if meta.get("pinned"):
             continue
@@ -253,16 +260,7 @@ def _decay_stale(db: Session, project_id: str, category: str, chapter_index: int
 
 def _enforce_budget(db: Session, project_id: str, category: str, *, commit: bool = True) -> None:
     """预算：每类上限 _MAX_PER_CATEGORY 条，超限按信任度淘汰最低（archived）。"""
-    rows = (
-        db.query(LongformMemory)
-        .filter(
-            LongformMemory.project_id == project_id,
-            LongformMemory.memory_type == EXPERIENCE_TYPE,
-            LongformMemory.memory_metadata["category"].as_string() == category,
-            LongformMemory.status == _ACTIVE,
-        )
-        .all()
-    )
+    rows = _active_experience_rows(db, project_id, category)
     if len(rows) <= _MAX_PER_CATEGORY:
         return
     candidates = sorted(
@@ -423,18 +421,20 @@ def experience_injection_items(
     )
     if not rows:
         return []
-    recent = rows[:recent_n]
-    high_trust = [r for r in rows if int((r.memory_metadata or {}).get("trust_score", 0)) >= high_trust_threshold]
-    selected = list(recent)
-    if high_trust_n and high_trust:
-        # 轮转：取最近强化距当前最远的（按 updated_at 升序第一个不在 recent 里的）
-        for r in sorted(high_trust, key=lambda r: r.updated_at or _now()):
-            if r not in selected:
-                selected.append(r)
-                if len(selected) >= recent_n + high_trust_n:
-                    break
+    # 简化（simplify）：rows 已按 updated_at desc——高信任轮转即从最旧端
+    # 取不在 recent 里的达标条目（reversed 替代重复 sorted，死切片消除）
+    selected = list(rows[:recent_n])
+    if high_trust_n:
+        for r in reversed(rows):
+            if r in selected:
+                continue
+            if int((r.memory_metadata or {}).get("trust_score", 0)) < high_trust_threshold:
+                continue
+            selected.append(r)
+            if len(selected) >= recent_n + high_trust_n:
+                break
     items = []
-    for r in selected[: recent_n + high_trust_n]:
+    for r in selected:
         meta = r.memory_metadata or {}
         last = int(meta.get("last_reinforce_chapter_index") or 0)
         anchor = f"Ch{last}验证" if last else "经验"
@@ -448,15 +448,7 @@ def experience_injection_items(
 
 def delete_experience(db: Session, project_id: str, key: str) -> dict:
     """作者否决：物理删除指定经验。"""
-    entry = (
-        db.query(LongformMemory)
-        .filter(
-            LongformMemory.project_id == project_id,
-            LongformMemory.memory_type == EXPERIENCE_TYPE,
-            LongformMemory.scope_key == key,
-        )
-        .first()
-    )
+    entry = _find_experience(db, project_id, key)
     if entry is None:
         raise WritingExperienceError(f"未找到写作经验「{key}」")
     db.delete(entry)
@@ -470,15 +462,7 @@ def pin_experience(db: Session, project_id: str, key: str, pinned: bool) -> dict
     钉住已归档条目 = 复活 + 保护（code-review #11：此前钉住 archived 静默 no-op，
     注入按 status==_ACTIVE 过滤导致钉住无任何可见效果）。
     """
-    entry = (
-        db.query(LongformMemory)
-        .filter(
-            LongformMemory.project_id == project_id,
-            LongformMemory.memory_type == EXPERIENCE_TYPE,
-            LongformMemory.scope_key == key,
-        )
-        .first()
-    )
+    entry = _find_experience(db, project_id, key)
     if entry is None:
         raise WritingExperienceError(f"未找到写作经验「{key}」")
     meta = dict(entry.memory_metadata or {})

@@ -62,7 +62,9 @@ class Transcript:
             except json.JSONDecodeError:
                 continue
             if entry.get("type") == "message":
-                messages.append(entry["data"])
+                data = entry["data"]
+                if not data.get("ephemeral"):
+                    messages.append(data)
             elif entry.get("type") == "compaction":
                 # 压缩快照是此后消息状态的真相源（append-only 日志中的检查点）
                 messages = list(entry["data"]["messages"][1:])
@@ -70,12 +72,17 @@ class Transcript:
         return messages
 
     def append_message(self, message: dict) -> None:
-        self._append_log("message", message)
+        # ephemeral 单点拦截（simplify 层次 F1）：临时消息（nudge/steering/
+        # 恢复建议）只进内存供当前回合使用，不落盘——此前 follow-up 恢复建议
+        # 经 append_message 直接写 JSONL，_load 无过滤导致重启后重放
+        if not message.get("ephemeral"):
+            self._append_log("message", message)
         self.messages.append(message)
 
     def append_messages(self, messages: list[dict]) -> None:
         for message in messages:
-            self._append_log("message", message)
+            if not message.get("ephemeral"):
+                self._append_log("message", message)
         self.messages.extend(messages)
 
     def record_compaction(self, compressed: list[dict], summary: str) -> None:

@@ -43,8 +43,6 @@ if TYPE_CHECKING:
 
 # 快照提供者：由外部（API 层）注入，避免内核依赖领域模块（CADR-005）
 SnapshotProvider = Callable[[], str | None]
-# 状态重注入提供者：压缩后把跨压缩存活的状态（设定/大纲/人物卡）重新注入
-InjectionProvider = Callable[[], str | None]
 
 # 压缩后清理孤立 tool 消息（DeepSeek 要求 tool 消息必须响应某条 assistant(tool_calls)）
 _SUMMARY_PREFIX = "[上下文压缩]"
@@ -91,7 +89,6 @@ class AgentHarness:
         before_tool_call: BeforeToolCall | None = None,
         approval_gate: ApprovalGate | None = None,
         snapshot_provider: SnapshotProvider | None = None,
-        injection_provider: InjectionProvider | None = None,
         guard_system: GuardSystem | None = None,
     ) -> None:
         self.session_id = session_id
@@ -102,7 +99,6 @@ class AgentHarness:
         self.before_tool_call = before_tool_call
         self.approval_gate = approval_gate
         self._snapshot_provider = snapshot_provider
-        self._injection_provider = injection_provider
         # 护栏注入化（openclaw 钩子化）：转发给 run_turn——此前注入点只存在于
         # loop 层，harness 不转发导致生产不可达（死扩展点，吸收核查发现）
         self._guard_system = guard_system
@@ -278,7 +274,9 @@ class AgentHarness:
                 history,
                 state=self._compaction_state,
                 extra_context=snapshot,
-                injection_provider=self._injection_provider,
+                # simplify：injection_provider 复用本回合已构建的 snapshot——
+                # 此前与 snapshot_provider 同参数重跑一遍快照查询（压缩回合翻倍）
+                injection_provider=(lambda: snapshot) if snapshot else None,
             )
             if len(compressed) < len(history):
                 compressed = _sanitize_tool_message_order(compressed)

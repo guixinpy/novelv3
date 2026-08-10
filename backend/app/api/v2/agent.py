@@ -147,11 +147,6 @@ def _create_harness(session_id: str, meta: dict, db: Session, gate: ApprovalGate
         snapshot_provider=lambda: build_project_snapshot(
             db, meta["project_id"], include_experience=SELF_OPTIMIZE_ENABLED
         ),
-        # 压缩后状态重注入（code-review 三轮 #13：injection_provider 曾是无生产
-        # 消费方的死扩展点——压缩摘要永不携带设定/大纲，跨压缩存活特性静默失效）
-        injection_provider=lambda: build_project_snapshot(
-            db, meta["project_id"], include_experience=SELF_OPTIMIZE_ENABLED
-        ),
     )
     return harness
 

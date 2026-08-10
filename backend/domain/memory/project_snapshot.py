@@ -10,6 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models import ChapterContent, LongformMemory, Project, Setup
+from domain.memory.writing_experience import experience_injection_items
 
 _FACT_SHEET_FORMAT_RULES = "格式规范：对话用全角引号“”；正文不得含 markdown 标记（**）、备选词（X/Y）、章题重复行。"
 
@@ -30,19 +31,23 @@ def build_project_snapshot(
 
     parts: list[str] = []
 
-    # 章节进度
-    chapters = (
-        db.query(ChapterContent)
+    # 章节进度（simplify：count + 末 3 章，此前全量加载全书正文入内存）
+    total = (
+        db.query(ChapterContent.chapter_index)
         .filter(ChapterContent.project_id == project_id)
-        .order_by(ChapterContent.chapter_index.asc())
-        .all()
+        .count()
     )
-    total = len(chapters)
     if total:
         parts.append(f"已写 {total} 章")
-        recent = chapters[-3:]
+        recent = (
+            db.query(ChapterContent)
+            .filter(ChapterContent.project_id == project_id)
+            .order_by(ChapterContent.chapter_index.desc())
+            .limit(3)
+            .all()
+        )
         recent_desc = "，".join(
-            f"Ch{c.chapter_index}《{c.title}》({c.word_count}字)" for c in recent
+            f"Ch{c.chapter_index}《{c.title}》({c.word_count}字)" for c in reversed(recent)
         )
         parts.append(f"最近章节: {recent_desc}")
 
@@ -94,13 +99,7 @@ def build_project_snapshot(
 
     # 写作经验段（per-book 自优化，09 定稿）：最近 2 + 高信任 1，标记仅供参考
     if include_experience:
-        try:
-            from domain.memory.writing_experience import experience_injection_items
-
-            experience_items = experience_injection_items(db, project_id)
-        except Exception:
-            # 经验段是辅助信息，查询失败静默跳过（fail-open）
-            experience_items = []
+        experience_items = experience_injection_items(db, project_id)
         if experience_items:
             desc = "；".join(f"{item['text']}({item['anchor']})" for item in experience_items)
             parts.append(f"写作经验(仅供参考): {desc}")

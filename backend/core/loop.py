@@ -28,7 +28,7 @@ from core.events import (
 )
 from core.guards.budget import IterationBudget, TokenBudget
 from core.guards.loop_guards import GuardSystem
-from core.providers.base import Provider, ProviderResponse, TextDelta, ToolCall, Usage
+from core.providers.base import Provider, ProviderError, ProviderResponse, TextDelta, ToolCall, Usage
 from core.tools.base import PermissionLevel, ToolContext, ToolRegistry, ToolResult
 from core.turn_state import TurnState
 
@@ -59,8 +59,6 @@ _MAX_EMPTY_RESPONSE_RETRIES = 2
 def _is_retryable(exc: Exception) -> bool:
     """部分流恢复判定：仅 ProviderError 且 retryable 才恢复（code-review 三轮 #10：
     401/400/内部 bug 等非重试错误不应把截断残片静默当完整回复）。"""
-    from core.providers.base import ProviderError
-
     return isinstance(exc, ProviderError) and exc.retryable
 
 
