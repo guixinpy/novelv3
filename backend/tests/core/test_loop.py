@@ -176,6 +176,24 @@ async def test_steering_injected_before_next_llm_call(scripted_provider_factory)
     assert any(m.get("role") == "user" and m.get("content") == "改方向" for m in second)
 
 
+async def test_partial_stream_recovered_on_interrupt(scripted_provider_factory):
+    """部分流恢复（hermes）：网络中断但已有流式文本——不丢已生成内容。
+
+    累积的部分文本作为最终回复（COMPLETED + exit_detail.recovery=partial_stream），
+    而非 INTERRUPTED 结束。
+    """
+    provider = scripted_provider_factory([{"content": "已生成的一半正文内容…"}])
+    provider.error_after = 5  # 产出 5 个字符后中断
+    result, events, turn_ended = await run(provider, make_registry())
+    assert result.stop_reason == StopReason.COMPLETED
+    assert result.partial_response == "已生成的一"
+    # 历史含部分文本（不丢）
+    assert any(m.get("role") == "assistant" and m.get("content") == "已生成的一" for m in result.messages)
+    # 可观测：exit_detail 标记恢复原因
+    assert turn_ended.exit_detail.get("recovery") == "partial_stream"
+    assert turn_ended.stop_reason == StopReason.COMPLETED.value
+
+
 async def test_provider_error_becomes_message(scripted_provider_factory):
     """provider 异常编码为消息（INTERRUPTED），不静默不炸。"""
     provider = scripted_provider_factory([{"content": "", "error": "network down", "retryable": True}])

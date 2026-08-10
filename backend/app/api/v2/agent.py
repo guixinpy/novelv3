@@ -215,6 +215,11 @@ async def _introspect_after_send(db: Session, session: dict) -> None:
                 chapter_text=chapter.content,
                 review_reasons="",
             )
+        # B4（openhuman 封箱聚合）：已完成弧线的 LLM 内容级联摘要——顺带聚合，
+        # 最迟延迟一个 send；fail-open 由 aggregate_pending 内部保证
+        from domain.memory.memory_service import aggregate_pending_arc_summaries
+
+        await aggregate_pending_arc_summaries(db, project_id, provider=harness.provider)
     except Exception:  # noqa: BLE001 - fail-open：自省失败不阻塞写作流程
         logger.exception("章末自省失败（fail-open 已跳过）")
 

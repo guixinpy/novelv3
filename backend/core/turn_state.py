@@ -41,6 +41,9 @@ class TurnState:
     def record_empty_response(self) -> None:
         self.empty_response_retries += 1
 
+    # ── 部分流恢复（hermes：网络中断但已有流式文本，不丢已生成内容）──
+    partial_stream_recovered: bool = False
+
     def start(self) -> None:
         self._started_at = time.monotonic()
 
@@ -86,6 +89,8 @@ class TurnState:
             "compacted": self.compacted,
             "elapsed_ms": round(self.elapsed_ms(), 1),
         }
+        if self.partial_stream_recovered:
+            detail["recovery"] = "partial_stream"
         if self.tool_error_samples:
             detail["error_samples"] = [
                 {"name": name, "text": text} for name, text in self.tool_error_samples

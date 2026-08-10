@@ -129,6 +129,7 @@ async def run_turn(
             break
 
         response: ProviderResponse | None = None
+        streamed_text: list[str] = []
         try:
             # 发送副本剥离 ephemeral 键（code-review #12：内部标记不发给 API，
             # 未知消息字段有 400 风险；ephemeral 仅用于 harness 持久化过滤）
@@ -139,10 +140,21 @@ async def run_turn(
                 send_history, tools=registry.to_specs(), **(extra_provider_kwargs or {})
             ):
                 if isinstance(event, TextDelta):
+                    streamed_text.append(event.text)
                     await emit(AssistantDelta(text=event.text))
                 elif isinstance(event, ProviderResponse):
                     response = event
         except Exception as exc:  # noqa: BLE001 - provider 异常编码为消息而非静默
+            if streamed_text:
+                # 部分流恢复（hermes）：网络中断但已有流式文本——不丢已生成内容，
+                # 累积文本作为最终回复（provider 层已保证部分流不重试防重复输出）
+                partial = "".join(streamed_text)
+                history.append({"role": "assistant", "content": partial})
+                await emit(AssistantMessage(content=partial))
+                partial_response = partial
+                state.partial_stream_recovered = True
+                stop_reason = StopReason.COMPLETED
+                break
             stop_reason = StopReason.INTERRUPTED
             error_text = f"模型调用失败：{exc}。"
             history.append({"role": "assistant", "content": error_text})

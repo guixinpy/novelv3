@@ -123,6 +123,90 @@ def test_archived_experience_filtered_from_query(db_session):
     assert "已归档经验" not in keys
 
 
+async def test_aggregate_arc_summary_llm_cascade(db_session):
+    """B4（openhuman 封箱聚合）：弧线完成后的 LLM 内容级联摘要。
+
+    覆盖标题清单版 arc_summary；幂等（aggregated 标记跳过）；fail-open（无章节跳过）。
+    """
+    from app.models import ChapterContent, LongformMemory
+    from domain.memory.memory_service import aggregate_arc_summary, aggregate_pending_arc_summaries, plan_arc
+
+    from tests.core.conftest import ScriptedProvider
+
+    project = Project(name="聚合测试")
+    db_session.add(project)
+    db_session.commit()
+    # 弧线 + 章节
+    plan_arc(db_session, project.id, action="define", title="第一卷", summary="雾城谜案",
+             start_chapter=1, end_chapter=10)
+    for i in range(1, 4):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i,
+            title=f"第{i}章", content=f"林舟在雾城调查第{i}章内容。" * 30,
+            word_count=300, status="generated",
+        ))
+    # 弧线完成（define 新弧线触发旧弧线 consolidation）
+    plan_arc(db_session, project.id, action="define", title="第二卷", summary="码头风云",
+             start_chapter=11, end_chapter=20)
+    arc = (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.memory_type == "story_arc")
+        .first()
+    )
+    assert arc.status == "completed"
+
+    # LLM 聚合
+    script = ScriptedProvider([{"content": "第一卷内容级联摘要：林舟在雾城揭开谜案，苏晚晴身世浮现。"}])
+    result = await aggregate_arc_summary(db_session, project.id, arc, provider=script)
+    assert result["status"] == "aggregated"
+    arc_summary = (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == "arc_summary",
+        )
+        .first()
+    )
+    assert "内容级联摘要" in arc_summary.summary
+    assert (arc_summary.memory_metadata or {}).get("aggregated") is True
+
+    # 幂等：再次聚合 skipped（不重复 LLM 调用）
+    script2 = ScriptedProvider([{"content": "不应被调用"}])
+    result2 = await aggregate_arc_summary(db_session, project.id, arc, provider=script2)
+    assert result2["status"] == "skipped"
+    assert script2.script_remaining() == 1  # provider 未被消费
+
+    # 批量聚合入口：已聚合 → 全部 skipped
+    results = await aggregate_pending_arc_summaries(db_session, project.id, provider=script2)
+    assert all(r["status"] == "skipped" for r in results)
+
+
+async def test_aggregate_arc_summary_fail_open(db_session):
+    """B4 fail-open：无章节的弧线跳过；provider 失败保持原标题清单版。"""
+    from app.models import LongformMemory
+    from domain.memory.memory_service import aggregate_arc_summary, plan_arc
+
+    from tests.core.conftest import ScriptedProvider
+
+    project = Project(name="聚合失败测试")
+    db_session.add(project)
+    db_session.commit()
+    plan_arc(db_session, project.id, action="define", title="空卷", summary="无章节",
+             start_chapter=1, end_chapter=10)
+    plan_arc(db_session, project.id, action="define", title="下一卷", summary="x",
+             start_chapter=11, end_chapter=20)
+    arc = (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.memory_type == "story_arc")
+        .first()
+    )
+    # 无章节 → 跳过（不调用 LLM）
+    script = ScriptedProvider([])
+    result = await aggregate_arc_summary(db_session, project.id, arc, provider=script)
+    assert result["status"] == "skipped"
+    assert result["reason"] == "no_chapters"
+
+
 def test_introspect_log_filtered_from_query(db_session):
     """code-review #4：introspect_log 内部标记行不进记忆查询（不挤占通道配额）。"""
     from app.models import LongformMemory

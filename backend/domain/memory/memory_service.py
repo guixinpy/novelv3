@@ -586,6 +586,120 @@ def plan_arc(
     raise MemoryServiceError(f"未知操作：{action}，支持 define/progress/list。")
 
 
+# ── 弧线内容级联摘要（openhuman 封箱聚合，B4）──
+
+_ARC_AGGREGATE_SYSTEM_PROMPT = (
+    "你是长篇小说的卷级摘要器。根据弧线的章节正文摘录，生成一段内容级联摘要"
+    "（200 字以内）：弧线主线、关键事件推进、人物状态变化、当前遗留悬念。"
+    "只描述弧线内已发生的事实，不预测后续情节，不使用 markdown。"
+)
+
+
+async def aggregate_arc_summary(
+    db: Session,
+    project_id: str,
+    arc,
+    *,
+    provider,
+) -> dict:
+    """单条弧线的 LLM 内容级联摘要（openhuman 封箱聚合，特化：弧线=自然封箱单元）。
+
+    已有 LLM 版（memory_metadata.aggregated=True）→ 跳过（幂等）；
+    无章节/空输出 → 保持原标题清单版（fail-open，不覆盖）。
+    """
+    arc_summary = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "arc_summary",
+            LongformMemory.scope_key == (arc.title or f"arc_{arc.id}"),
+        )
+        .first()
+    )
+    if arc_summary is not None and (arc_summary.memory_metadata or {}).get("aggregated"):
+        return {"status": "skipped", "reason": "already_aggregated"}
+
+    chapters = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index >= (arc.start_chapter_index or 1),
+            ChapterContent.chapter_index <= (arc.end_chapter_index or 1),
+        )
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    chapter_notes = [
+        f"Ch{c.chapter_index}《{c.title}》：{(c.content or '')[:120]}…" for c in chapters[:15]
+    ]
+    if not chapter_notes:
+        return {"status": "skipped", "reason": "no_chapters"}
+
+    span = f"Ch{arc.start_chapter_index}-{arc.end_chapter_index}"
+    user_prompt = (
+        f"弧线「{arc.title}」({span})，概要：{arc.summary or '（无）'}。\n\n"
+        f"章节摘录：\n" + "\n".join(chapter_notes)
+    )
+    try:
+        response = await provider.complete(
+            [
+                {"role": "system", "content": _ARC_AGGREGATE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
+    except Exception:  # noqa: BLE001 - 聚合失败保持标题清单版（fail-open）
+        return {"status": "failed", "reason": "provider_error"}
+    text = (response.content or "").strip()
+    if not text:
+        return {"status": "failed", "reason": "empty_output"}
+
+    if arc_summary is None:
+        arc_summary = get_or_create_longform_memory(
+            db, project_id, "arc_summary", arc.title or f"arc_{arc.id}",
+            defaults={
+                "title": f"弧线摘要: {arc.title}",
+                "summary": text,
+                "start_chapter_index": arc.start_chapter_index,
+                "end_chapter_index": arc.end_chapter_index,
+                "status": "completed",
+                "memory_metadata": {"provenance": "agent_inferred", "source": "arc_aggregation_llm"},
+            },
+        )
+    arc_summary.summary = text
+    meta = dict(arc_summary.memory_metadata or {})
+    meta["aggregated"] = True
+    meta["source"] = "arc_aggregation_llm"
+    arc_summary.memory_metadata = meta
+    db.commit()
+    return {"status": "aggregated", "arc": arc.title, "summary_len": len(text)}
+
+
+async def aggregate_pending_arc_summaries(db: Session, project_id: str, *, provider) -> list[dict]:
+    """批量聚合已完成但未 LLM 聚合的弧线（最近 3 条，最旧优先聚合）。
+
+    触发点：章末自省路径（agent.py _introspect_after_send）顺带执行——
+    弧线完成由 plan_arc 触发（模型调用），聚合最迟延迟一个 send。
+    """
+    completed = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.status == "completed",
+        )
+        .order_by(LongformMemory.start_chapter_index.desc())
+        .limit(3)
+        .all()
+    )
+    results: list[dict] = []
+    for arc in reversed(completed):  # 最旧的先聚合
+        try:
+            results.append(await aggregate_arc_summary(db, project_id, arc, provider=provider))
+        except Exception:  # noqa: BLE001 - fail-open：单条失败不影响其余
+            results.append({"status": "failed", "arc": arc.title})
+    return results
+
+
 # ── memory_tree ──
 
 
