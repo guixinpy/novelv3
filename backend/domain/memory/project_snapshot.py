@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import ChapterContent, LongformMemory, Project, Setup
 from domain.memory.memory_service import plotline_due_items
 from domain.memory.writing_experience import experience_injection_items
+from domain.writing.quality_trend import quality_trend_stats
 
 # 快照到期伏笔条目文案（超期/临期单行 ≤约 30 字，控制快照总预算——
 # title 截断到 12 字 + 省略号，code-review 4 项 #6：此前完整 title 单条约 74 字，
@@ -30,6 +31,15 @@ def _due_item_text(item: dict) -> str:
             return f"「{title}」(超{item['overdue_by']}章)"
         return f"「{title}」(开{item['age_chapters']}章未收)"
     return f"「{title}」(Ch{item['expected']}收)"
+
+
+# 质量趋势快照文案（信息形态 ≤约 40 字：数字 + 可能原因供参考，无指令）
+def _trend_text(trend: dict) -> str:
+    ratio = trend["ratio"]
+    change = f"降{round((1 - ratio) * 100)}%" if ratio < 1 else f"增{round((ratio - 1) * 100)}%"
+    causes = "、".join(trend["possible_causes"]) if trend["possible_causes"] else ""
+    cause_suffix = f"，可能: {causes}" if causes else ""
+    return f"质量趋势: 近{trend['window']}章字数 {trend['first_avg']}→{trend['second_avg']}（{change}{cause_suffix}）"
 
 _FACT_SHEET_FORMAT_RULES = "格式规范：对话用全角引号“”；正文不得含 markdown 标记（**）、备选词（X/Y）、章题重复行。"
 
@@ -69,6 +79,11 @@ def build_project_snapshot(
             f"Ch{c.chapter_index}《{c.title}》({c.word_count}字)" for c in reversed(recent)
         )
         parts.append(f"最近章节: {recent_desc}")
+
+    # 质量趋势（P1① 恢复）：非 stable 才注入，≤约 40 字，信息形态（无指令文案）
+    trend = quality_trend_stats(db, project_id)
+    if trend is not None and trend["trend"] != "stable":
+        parts.append(_trend_text(trend))
 
     # 活跃弧线 + 终局
     active_arc = (

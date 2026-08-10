@@ -67,6 +67,8 @@ POST /api/v2/agent/sessions/{id}/messages
 | `chapter_gen.py` | 最小上下文生成（大纲章节 + 上章摘要 + 项目快照）→ 章节文本 |
 | `format_checker.py` | 输出格式校验纯函数（全角引号/markdown 残留/备选词等确定性规则） |
 | `structural_similarity.py` | 结构级重复检测（标题重复防循环） |
+| `quality_trend.py` | **质量趋势**（P1①）：近 N 章字数窗口比值四级判定，快照注入（信息形态，长程实验观测尺子） |
+| `continuity.py` | **连续性检测**（P1②）：角色状态维度（设定卡死亡角色再次出场），checker 可扩展 |
 | `prompt_budget.py` | 上下文预算截断（priority 排序 + 头尾保留） |
 | `chapter_utils.py` | 章节辅助函数 |
 
@@ -100,6 +102,7 @@ POST /api/v2/agent/sessions/{id}/messages
 | `memory_tree` | read | 层级记忆树（project → arc → chapter → plotline） |
 | `get_entities` | read | 实体挖掘候选 + 转正查询 |
 | `retrieve` | read | 多源检索 |
+| `check_continuity` | read | 连续性检测（角色状态维度，报告形态供模型裁决） |
 
 ## 六、app/ 模块
 

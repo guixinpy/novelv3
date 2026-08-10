@@ -31,6 +31,7 @@ from core.providers.deepseek import DeepSeekProvider
 from core.tools.base import ToolContext, ToolRegistry
 from domain.memory.project_snapshot import build_project_snapshot
 from domain.tools.memory_tools import register_memory_tools
+from domain.tools.quality_tools import register_quality_tools
 from domain.tools.retrieval_tools import register_retrieval_tools
 from domain.tools.writing_tools import register_writing_tools
 
@@ -112,11 +113,12 @@ def _load_provider() -> DeepSeekProvider:
 
 
 def _build_registry() -> ToolRegistry:
-    """全量工具注册（writing + memory + retrieval，P0-2）。"""
+    """全量工具注册（writing + memory + retrieval + quality，P0-2）。"""
     registry = ToolRegistry()
     register_writing_tools(registry)
     register_memory_tools(registry)
     register_retrieval_tools(registry)
+    register_quality_tools(registry)
     return registry
 
 
