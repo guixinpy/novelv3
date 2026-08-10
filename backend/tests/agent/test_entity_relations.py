@@ -8,8 +8,8 @@ from __future__ import annotations
 from app.models import EntityCandidate, EntityRelation, Project
 from domain.retrieval.entity_miner import (
     record_entity_cooccurrences,
-    related_entities,
     register_entity_candidates,
+    related_entities,
 )
 
 

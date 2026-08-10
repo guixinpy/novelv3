@@ -4,7 +4,6 @@ from __future__ import annotations
 from core.context.compaction import CompactionState, check_context_usage, compact_history
 from core.context.estimate import estimate_tokens
 
-
 # ── estimate ──
 
 def test_cjk_weights_higher_than_ascii():

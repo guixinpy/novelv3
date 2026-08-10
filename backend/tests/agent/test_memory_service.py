@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.models import LongformMemory, Project
-from domain.memory.memory_service import query_memory
+from app.models import ChapterContent, LongformMemory, Project
+from domain.memory.memory_service import plotline_apply_updates, query_memory, track_plotline
 
 
 def _seed(db, project_id: str, memory_type: str, count: int, title_prefix: str) -> None:
@@ -151,7 +151,6 @@ async def test_aggregate_arc_summary_llm_cascade(db_session):
     """
     from app.models import ChapterContent, LongformMemory
     from domain.memory.memory_service import aggregate_arc_summary, aggregate_pending_arc_summaries, plan_arc
-
     from tests.core.conftest import ScriptedProvider
 
     project = Project(name="聚合测试")
@@ -206,7 +205,6 @@ async def test_aggregate_arc_summary_fail_open(db_session):
     """B4 fail-open：无章节的弧线跳过；provider 失败保持原标题清单版。"""
     from app.models import LongformMemory
     from domain.memory.memory_service import aggregate_arc_summary, plan_arc
-
     from tests.core.conftest import ScriptedProvider
 
     project = Project(name="聚合失败测试")
@@ -250,3 +248,141 @@ def test_introspect_log_filtered_from_query(db_session):
     result = query_memory(db_session, project.id, memory_type="all", limit=10)
     assert all(m["type"] != "introspect_log" for m in result["memories"])
     assert len(result["memories"]) == 2
+
+
+# ── 伏笔账本（09 定稿独立后续项）──
+
+
+def _make_project(db) -> Project:
+    p = Project(name="伏笔账本")
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+def _plotline(db, project_id, title):
+    return (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "plotline",
+            LongformMemory.scope_key == title,
+        )
+        .first()
+    )
+
+
+def test_plotline_apply_updates_open_close_postpone(db_session):
+    """账本应用：open 新建（含 expected）、close 闭合（含 payoff + 结束章）、
+    reopen（closed → open）+ postpone 更新 expected。"""
+    project = _make_project(db_session)
+
+    # open 新建
+    applied = plotline_apply_updates(
+        db_session, project.id, 1,
+        [{"action": "open", "title": "黑市线", "summary": "黑市背后的势力", "expected_resolve_chapter": 80}],
+    )
+    assert applied["open"] == 1
+    m = _plotline(db_session, project.id, "黑市线")
+    assert m is not None and m.status == "open"
+    assert m.start_chapter_index == 1
+    assert (m.memory_metadata or {})["expected_resolve_chapter"] == 80
+    assert (m.memory_metadata or {})["source"] == "introspect"
+
+    # close 含 payoff
+    applied = plotline_apply_updates(
+        db_session, project.id, 76,
+        [{"action": "close", "title": "黑市线", "payoff": "第 76 章揭晓幕后是程砚秋"}],
+    )
+    assert applied["close"] == 1
+    m = _plotline(db_session, project.id, "黑市线")
+    assert m.status == "closed"
+    assert m.end_chapter_index == 76
+    assert "程砚秋" in (m.memory_metadata or {})["payoff"]
+
+    # reopen + postpone（同 batch）
+    applied = plotline_apply_updates(
+        db_session, project.id, 90,
+        [
+            {"action": "open", "title": "黑市线", "summary": "余党反扑"},
+            {"action": "postpone", "title": "黑市线", "expected_resolve_chapter": 120},
+        ],
+    )
+    assert applied["open"] == 1 and applied["postpone"] == 1
+    m = _plotline(db_session, project.id, "黑市线")
+    assert m.status == "open"
+    assert (m.memory_metadata or {})["expected_resolve_chapter"] == 120
+
+
+def test_plotline_apply_updates_skips_invalid(db_session):
+    """fail-open：title 漂移/无开放伏笔/缺 expected/未知动作/超长 title/none → skipped 不炸。"""
+    project = _make_project(db_session)
+    applied = plotline_apply_updates(
+        db_session, project.id, 1,
+        [
+            {"action": "close", "title": "不存在的线", "payoff": "x"},          # 无开放 → skipped
+            {"action": "postpone", "title": "也不存在", "expected_resolve_chapter": 50},  # skipped
+            {"action": "postpone", "title": "缺 expected"},                      # skipped
+            {"action": "bogus", "title": "未知动作"},                            # skipped
+            {"action": "open", "title": "超" * 80},                              # title 超长 → skipped
+            {"action": "none", "title": "忽略"},                                 # none → skipped
+        ],
+    )
+    assert applied == {"open": 0, "close": 0, "postpone": 0, "skipped": 6}
+    assert db_session.query(LongformMemory).filter(
+        LongformMemory.project_id == project.id,
+        LongformMemory.memory_type == "plotline",
+    ).count() == 0
+
+
+def test_plotline_apply_updates_invalid_expected(db_session):
+    """expected 非 int（字符串/bool/负数）→ 不落库但 open 仍成功。"""
+    project = _make_project(db_session)
+    applied = plotline_apply_updates(
+        db_session, project.id, 2,
+        [
+            {"action": "open", "title": "字符串线", "expected_resolve_chapter": "80"},
+            {"action": "open", "title": "负线", "expected_resolve_chapter": -5},
+            {"action": "open", "title": "布尔线", "expected_resolve_chapter": True},
+        ],
+    )
+    assert applied["open"] == 3
+    for title in ("字符串线", "负线", "布尔线"):
+        m = _plotline(db_session, project.id, title)
+        assert (m.memory_metadata or {}).get("expected_resolve_chapter") is None
+
+
+def test_plotline_query_due_marks(db_session):
+    """query 两级标记：overdue（超 expected / 无 expected 超 30 章）、due_soon（距 expected ≤3 章）。"""
+    project = _make_project(db_session)
+    for i in range(1, 61):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i, title=f"Ch{i}",
+            content="正文", status="generated",
+        ))
+    # 超期：expected=50，当前 60 → 超 10 章
+    track_plotline(db_session, project.id, "open", title="超期线", chapter_index=10, expected_resolve_chapter=50)
+    # 临期：expected=62，当前 60 → 2 章后回收
+    track_plotline(db_session, project.id, "open", title="临期线", chapter_index=30, expected_resolve_chapter=62)
+    # 未到期：expected=100
+    track_plotline(db_session, project.id, "open", title="未到期线", chapter_index=40, expected_resolve_chapter=100)
+    # 无 expected 且超 30 章（埋于 Ch1，当前 60）
+    track_plotline(db_session, project.id, "open", title="无计划超期线", chapter_index=1)
+    db_session.commit()
+
+    result = track_plotline(db_session, project.id, "query")
+    by_title = {p["title"]: p for p in result["plotlines"]}
+    assert by_title["超期线"]["overdue"] is True
+    assert by_title["超期线"]["overdue_by"] == 10
+    assert by_title["临期线"]["due_soon"] is True
+    assert by_title["临期线"]["resolves_in"] == 2
+    assert by_title["无计划超期线"]["overdue"] is True
+    assert by_title["无计划超期线"]["age_chapters"] == 59
+    assert by_title["未到期线"].get("overdue") is None
+    assert by_title["未到期线"].get("due_soon") is None
+    assert "超期" in result["stale_warning"] and "临期" in result["stale_warning"]
+    # 新字段回读（无 expected 的条目为 None）
+    assert all("expected_resolve_chapter" in p and "payoff" in p for p in result["plotlines"])
+    assert by_title["无计划超期线"]["expected_resolve_chapter"] is None
+    assert by_title["超期线"]["expected_resolve_chapter"] == 50

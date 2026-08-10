@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.models import LongformMemory
+from domain.memory.memory_service import open_plotline_rows, plotline_apply_updates
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +50,17 @@ _INTROSPECT_SYSTEM_PROMPT = (
     "3) 格式类问题已由规则检查覆盖，不要重复记录。"
     "必须进行负面采样：找出本章相对章纲的偏离与最失败之处。"
     "输出严格 JSON：{\"experiences\": [{\"key\": \"主题短键\", "
-    "\"action\": \"new|reinforce|override\", \"text\": \"经验（≤60字）\"}]}。"
+    "\"action\": \"new|reinforce|override\", \"text\": \"经验（≤60字）\"}], "
+    "\"plotline_updates\": [{\"action\": \"open|close|postpone|none\", "
+    "\"title\": \"伏笔标题\", \"summary\": \"简述\", \"expected_resolve_chapter\": 80, "
+    "\"payoff\": \"回收摘要\"}]}。"
     "key 尽量复用下方提供的候选键（reinforce/override 必须命中候选键）；"
     "无匹配时新建 key（action=new）。经验不足可不输出（experiences 可为空数组）。"
+    "伏笔账本纪律：1) 本章新埋设伏笔 → open（expected_resolve_chapter 由心证可空）；"
+    "2) 本章回收的已有伏笔 → close 并给 payoff（如何回收）；"
+    "3) 已有伏笔需延后回收 → postpone（必须给新 expected_resolve_chapter）；"
+    "4) close/postpone 的 title 必须与下方「当前开放伏笔」清单逐字一致，不得自创，不确定时输出 none；"
+    "5) 本章无伏笔变化 → plotline_updates 为空数组。"
 )
 
 
@@ -122,14 +131,27 @@ def _build_introspect_user_prompt(
     chapter_text: str,
     review_reasons: str,
     candidate_keys: list[str],
+    open_plotlines: list[dict] | None = None,
 ) -> str:
     lines = [
         f"当前章节：第 {chapter_index} 章（自省分类：{category}）。",
         f"章纲/计划：{plan_context or '（无）'}",
         f"评审意见（若有）：{review_reasons or '（无）'}",
         f"已有经验键（优先复用）：{('、'.join(candidate_keys)) or '（无）'}",
-        f"本章正文：\n{chapter_text[:6000]}",
     ]
+    if open_plotlines:
+        desc = "；".join(
+            (
+                f"{p['title']}(埋于 Ch{p['start_chapter']}"
+                f"{', 预计 Ch' + str(p['expected_resolve_chapter']) + ' 收' if p['expected_resolve_chapter'] else ''}"
+                f"{', 已超期' if p.get('overdue') else ''})"
+            )
+            for p in open_plotlines
+        )
+        lines.append(f"当前开放伏笔：{desc}")
+    else:
+        lines.append("当前开放伏笔：（无）")
+    lines.append(f"本章正文：\n{chapter_text[:6000]}")
     return "\n".join(lines)
 
 
@@ -307,8 +329,11 @@ async def introspect_and_record(
 
     category = INTROSPECT_CATEGORIES[(chapter_index - 1) % len(INTROSPECT_CATEGORIES)]
     candidate_keys = _candidate_keys(db, project_id, category)
+    # 伏笔账本：注入开放伏笔清单（模型据此对已有伏笔 close/postpone）
+    open_plotlines = open_plotline_rows(db, project_id)
     user_prompt = _build_introspect_user_prompt(
-        chapter_index, category, plan_context, chapter_text, review_reasons, candidate_keys
+        chapter_index, category, plan_context, chapter_text, review_reasons,
+        candidate_keys, open_plotlines=open_plotlines,
     )
     response = await provider.complete(
         [
@@ -316,10 +341,14 @@ async def introspect_and_record(
             {"role": "user", "content": user_prompt},
         ]
     )
-    items = _parse_introspect_output(response.content)
+    parsed = _parse_introspect_output(response.content)
     # 原子提交（code-review #6）：经验记账与幂等标记单事务，崩溃不产生
     # 「经验已落库但无标记 → 同章重自省 → 信任度虚增」
-    applied = apply_experiences(db, project_id, chapter_index, category, items, commit=False)
+    applied = apply_experiences(db, project_id, chapter_index, category, parsed["experiences"], commit=False)
+    # 伏笔账本：同事务应用伏笔更新（commit=False，随幂等标记统一提交）
+    plotline_applied = plotline_apply_updates(
+        db, project_id, chapter_index, parsed["plotline_updates"], commit=False
+    )
     # 自省完成标记（provider 调用已发生，无论解析结果；失败路径由调用方 fail-open 处理）
     db.add(
         LongformMemory(
@@ -338,13 +367,16 @@ async def introspect_and_record(
         "status": "recorded",
         "category": category,
         "applied": applied,
+        "plotline_applied": plotline_applied,
         "chapter_index": chapter_index,
     }
 
 
-def _parse_introspect_output(content: str) -> list[dict]:
-    """解析自省 JSON 输出（容错：解析失败记录日志并返回空，不炸流程）。
+def _parse_introspect_output(content: str) -> dict[str, list[dict]]:
+    """解析自省 JSON 输出（容错：解析失败记录日志并返回空段，不炸流程）。
 
+    伏笔账本：返回双段 {"experiences": [...], "plotline_updates": [...]}。
+    旧格式输出（无 plotline_updates 字段）→ 空列表，兼容（伏笔段零动作）。
     健壮解析（code-review 三轮 #12）：完整 json.loads 优先；失败后按大括号配对
     定位真正的 JSON 边界（跳过字符串内的括号）——LLM 尾部散文含多余 } 时
     此前 rfind 切块非法导致整段解析失败、经验永久丢失。
@@ -383,15 +415,18 @@ def _parse_introspect_output(content: str) -> list[dict]:
                         break
     if parsed is None:
         logger.warning("introspect output not parseable, dropped: %.100s", text)
-        return []
+        return {"experiences": [], "plotline_updates": []}
+    valid: list[dict] = []
     experiences = parsed.get("experiences") if isinstance(parsed, dict) else None
-    if not isinstance(experiences, list):
-        return []
-    valid = []
-    for item in experiences:
-        if isinstance(item, dict) and item.get("key") and item.get("text"):
-            valid.append(item)
-    return valid
+    if isinstance(experiences, list):
+        for item in experiences:
+            if isinstance(item, dict) and item.get("key") and item.get("text"):
+                valid.append(item)
+    updates: list[dict] = []
+    plotline_updates = parsed.get("plotline_updates") if isinstance(parsed, dict) else None
+    if isinstance(plotline_updates, list):
+        updates = [i for i in plotline_updates if isinstance(i, dict)]
+    return {"experiences": valid, "plotline_updates": updates}
 
 
 def experience_injection_items(

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from sqlalchemy.orm import Session
@@ -13,9 +14,15 @@ from app.models import ChapterContent, LongformMemory
 from domain.memory.longform_memory import get_or_create_longform_memory
 from domain.retrieval.athena_retrieval import search_retrieval
 
+logger = logging.getLogger(__name__)
+
 _PLOTLINE_TITLE_MAX = 60
 _PLOTLINE_TITLE_TEMPLATE = "标题格式建议：核心冲突关键词，如「林舟身世之谜」；避免含章节序号。"
 _PLOTLINE_STALE_AFTER = 30
+# 伏笔账本（09 定稿独立后续项）：临期窗口 = 距预计回收章 ≤3 章
+_PLOTLINE_RESOLVE_NEAR = 3
+_PLOTLINE_SUMMARY_MAX = 500
+_PLOTLINE_PAYOFF_MAX = 200
 _CHAPTER_REF = re.compile(r"第\s*\d+\s*[章卷部回]")
 
 # 每通道注入配额（openhuman 多通道召回配额，特化适配网文记忆类型）：
@@ -60,6 +67,56 @@ class MemoryServiceError(Exception):
     """记忆服务业务错误（工具层转为 ToolResult.fail）。"""
 
 
+def _plotline_due_state(m, latest_index: int) -> dict | None:
+    """伏笔到期标记（伏笔账本判定，query 与快照钩子共用防规则漂移）。
+
+    返回 {"overdue": True, "overdue_by"|"age_chapters", "expected"} /
+    {"due_soon": True, "resolves_in", "expected"}，未到期返回 None。
+    """
+    if m.status != "open" or m.start_chapter_index is None:
+        return None
+    expected = (m.memory_metadata or {}).get("expected_resolve_chapter")
+    if isinstance(expected, int) and expected >= 1:
+        if latest_index > expected:
+            return {"overdue": True, "overdue_by": latest_index - expected, "expected": expected}
+        if latest_index >= expected - _PLOTLINE_RESOLVE_NEAR:
+            return {"due_soon": True, "resolves_in": expected - latest_index, "expected": expected}
+        return None
+    if latest_index - m.start_chapter_index > _PLOTLINE_STALE_AFTER:
+        return {"overdue": True, "age_chapters": latest_index - m.start_chapter_index, "expected": None}
+    return None
+
+
+def plotline_due_items(db: Session, project_id: str, limit: int = 3) -> list[dict]:
+    """到期伏笔条目（超期优先 → 临期，≤limit）：供快照注入钩子（09 定稿）。"""
+    rows = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "plotline",
+            LongformMemory.status == "open",
+        )
+        .all()
+    )
+    if not rows:
+        return []
+    latest_row = (
+        db.query(ChapterContent.chapter_index)
+        .filter(ChapterContent.project_id == project_id)
+        .order_by(ChapterContent.chapter_index.desc())
+        .first()
+    )
+    latest_index = latest_row[0] if latest_row else 0
+    ranked = []
+    for m in rows:
+        due = _plotline_due_state(m, latest_index)
+        if due is None:
+            continue
+        ranked.append({"title": m.title, **due})
+    ranked.sort(key=lambda e: (0 if e.get("overdue") else 1, e.get("expected") or 0))
+    return ranked[:limit]
+
+
 def _open_plotlines_containing(db: Session, project_id: str, items: list[str]) -> list[str]:
     if not items:
         return []
@@ -90,6 +147,8 @@ def track_plotline(
     title: str = "",
     summary: str = "",
     chapter_index: int = 0,
+    expected_resolve_chapter: int = 0,
+    payoff: str = "",
 ) -> dict:
     if action == "open":
         if not title:
@@ -103,6 +162,9 @@ def track_plotline(
                 "情节线标题不应携带章节/卷/部序号（如「第139章线（第二部）」），否则后续检索必然失败。"
                 f"{_PLOTLINE_TITLE_TEMPLATE}"
             )
+        meta = {"provenance": "agent_inferred", "source": "track_plotline"}
+        if expected_resolve_chapter and expected_resolve_chapter > 0:
+            meta["expected_resolve_chapter"] = int(expected_resolve_chapter)
         existing = get_or_create_longform_memory(
             db, project_id, "plotline", title,
             defaults={
@@ -110,18 +172,25 @@ def track_plotline(
                 "summary": summary,
                 "start_chapter_index": chapter_index or None,
                 "status": "open",
-                "memory_metadata": {"provenance": "agent_inferred", "source": "track_plotline"},
+                "memory_metadata": meta,
             },
         )
         if existing.id is None:
             db.commit()
             return {"action": "opened", "id": existing.id, "title": title, "status": "open"}
         if existing.status == "open":
+            # 已存在：补充预计回收章（模型/作者埋线后给出计划）
+            if expected_resolve_chapter and expected_resolve_chapter > 0:
+                m = dict(existing.memory_metadata or {})
+                m["expected_resolve_chapter"] = int(expected_resolve_chapter)
+                existing.memory_metadata = m
+                db.commit()
             return {"action": "already_exists", "id": existing.id, "title": title, "status": "open"}
         existing.status = "open"
         existing.summary = summary or existing.summary
         existing.start_chapter_index = chapter_index or existing.start_chapter_index
         existing.end_chapter_index = None
+        existing.memory_metadata = {**(existing.memory_metadata or {}), **meta}
         db.commit()
         return {"action": "reopened", "id": existing.id, "title": title, "status": "open"}
 
@@ -142,6 +211,10 @@ def track_plotline(
             raise MemoryServiceError(f"未找到开放的情节线「{title}」。")
         mem.status = "closed"
         mem.end_chapter_index = chapter_index or None
+        if payoff:
+            m = dict(mem.memory_metadata or {})
+            m["payoff"] = payoff[:_PLOTLINE_PAYOFF_MAX]
+            mem.memory_metadata = m
         db.commit()
         return {"action": "closed", "id": mem.id, "title": title, "status": "closed"}
 
@@ -168,6 +241,8 @@ def track_plotline(
                     "status": m.status,
                     "start_chapter": m.start_chapter_index,
                     "end_chapter": m.end_chapter_index,
+                    "expected_resolve_chapter": (m.memory_metadata or {}).get("expected_resolve_chapter"),
+                    "payoff": (m.memory_metadata or {}).get("payoff"),
                 }
                 for m in memories
             ],
@@ -180,21 +255,33 @@ def track_plotline(
                 .first()
             )
             latest_index = latest_row[0] if latest_row else 0
-            stale_open: list[str] = []
+            # 账本两级标记（伏笔账本）：超期（超 expected 或无 expected 超 30 章）/
+            # 临期（距 expected ≤3 章）。stale_warning 键保留（合并文案，兼容旧消费方）。
+            overdue_open: list[str] = []
+            due_soon_open: list[str] = []
             for item, m in zip(result["plotlines"], memories, strict=False):
-                if (
-                    m.status == "open"
-                    and m.start_chapter_index is not None
-                    and latest_index - m.start_chapter_index > _PLOTLINE_STALE_AFTER
-                ):
-                    item["stale"] = True
-                    item["age_chapters"] = latest_index - m.start_chapter_index
-                    stale_open.append(f"「{m.title}」(起始于第{m.start_chapter_index}章)")
-            if stale_open:
-                result["stale_warning"] = (
-                    f"以下伏笔已开放超过 {_PLOTLINE_STALE_AFTER} 章：{'、'.join(stale_open)}。"
-                    f"请在本卷收束前回收，或显式闭环。"
-                )
+                due = _plotline_due_state(m, latest_index)
+                if due is None:
+                    continue
+                if due.get("overdue"):
+                    item["overdue"] = True
+                    if "overdue_by" in due:
+                        item["overdue_by"] = due["overdue_by"]
+                        overdue_open.append(f"「{m.title}」(已超预计 {due['overdue_by']} 章)")
+                    else:
+                        item["age_chapters"] = due["age_chapters"]
+                        overdue_open.append(f"「{m.title}」(已开放 {due['age_chapters']} 章)")
+                else:
+                    item["due_soon"] = True
+                    item["resolves_in"] = due["resolves_in"]
+                    due_soon_open.append(f"「{m.title}」(预计第{due['expected']}章回收)")
+            if overdue_open or due_soon_open:
+                warns = []
+                if overdue_open:
+                    warns.append(f"以下伏笔已超期：{'、'.join(overdue_open)}")
+                if due_soon_open:
+                    warns.append(f"以下伏笔临期：{'、'.join(due_soon_open)}")
+                result["stale_warning"] = "；".join(warns) + "。请在本卷收束前回收，或显式延期。"
         if title and not memories:
             fallback_row = (
                 base.filter(LongformMemory.status == "open")
@@ -214,6 +301,10 @@ def track_plotline(
                         "status": fallback_row.status,
                         "start_chapter": fallback_row.start_chapter_index,
                         "end_chapter": fallback_row.end_chapter_index,
+                        "expected_resolve_chapter": (fallback_row.memory_metadata or {}).get(
+                            "expected_resolve_chapter"
+                        ),
+                        "payoff": (fallback_row.memory_metadata or {}).get("payoff"),
                     }
                 ]
             else:
@@ -222,6 +313,167 @@ def track_plotline(
         return result
 
     raise MemoryServiceError(f"未知操作：{action}，支持 open/close/query。")
+
+
+# ── 伏笔账本：自省自动提取入口（09 定稿独立后续项）──
+
+
+def open_plotline_rows(db: Session, project_id: str, limit: int = 20) -> list[dict]:
+    """自省提示词用的开放伏笔清单（≤limit 条，按埋设章序）。
+
+    供 introspect_and_record 拼 prompt：模型据此对已有伏笔做 close/postpone，
+    而不仅是发现新伏笔。overdue 标记（超预计回收章）辅助模型判断。
+    """
+    rows = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "plotline",
+            LongformMemory.status == "open",
+        )
+        .order_by(LongformMemory.start_chapter_index)
+        .limit(limit)
+        .all()
+    )
+    latest_row = (
+        db.query(ChapterContent.chapter_index)
+        .filter(ChapterContent.project_id == project_id)
+        .order_by(ChapterContent.chapter_index.desc())
+        .first()
+    )
+    latest_index = latest_row[0] if latest_row else 0
+    out: list[dict] = []
+    for m in rows:
+        expected = (m.memory_metadata or {}).get("expected_resolve_chapter")
+        entry: dict = {
+            "title": m.title,
+            "start_chapter": m.start_chapter_index,
+            "expected_resolve_chapter": expected if isinstance(expected, int) and expected >= 1 else None,
+        }
+        if isinstance(expected, int) and expected >= 1 and latest_index > expected:
+            entry["overdue"] = True
+        out.append(entry)
+    return out
+
+
+def _expected_from(item: dict) -> int | None:
+    """校验自省输出的 expected_resolve_chapter（int ≥1；bool 是 int 子类，排除）。"""
+    v = item.get("expected_resolve_chapter")
+    if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+        return None
+    return v
+
+
+def _find_open_plotline(db: Session, project_id: str, title: str):
+    # autoflush=False 环境下（测试与可能的自定义 Session）同事务先改后查：
+    # reopen 置 status=open 后必须 flush 才可见，否则同 batch 的 close/postpone 漏匹配
+    db.flush()
+    return (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "plotline",
+            LongformMemory.scope_key == title,
+            LongformMemory.status == "open",
+        )
+        .first()
+    )
+
+
+def plotline_apply_updates(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    updates: list[dict],
+    *,
+    commit: bool = True,
+) -> dict:
+    """应用自省输出的伏笔状态更新（open/close/postpone/none）。
+
+    自省自动提取入口（伏笔账本）：调用方在自省事务内以 commit=False 调用，
+    保证幂等标记与伏笔更新原子提交。fail-open：title 校验违规/匹配失败/未知
+    动作记日志跳过，不炸自省流程。
+    """
+    applied = {"open": 0, "close": 0, "postpone": 0, "skipped": 0}
+    for item in updates or []:
+        action = str(item.get("action", "")).strip()
+        title = str(item.get("title", "")).strip()
+        if action in ("", "none"):
+            applied["skipped"] += 1
+            continue
+        if not title or len(title) > _PLOTLINE_TITLE_MAX:
+            logger.warning("plotline update skipped: title 非法 %r", title[:30])
+            applied["skipped"] += 1
+            continue
+        if action == "open":
+            expected = _expected_from(item)
+            mem = get_or_create_longform_memory(
+                db, project_id, "plotline", title,
+                defaults={
+                    "title": title,
+                    "summary": str(item.get("summary", "")).strip()[:_PLOTLINE_SUMMARY_MAX],
+                    "start_chapter_index": chapter_index,
+                    "status": "open",
+                    "memory_metadata": {
+                        "provenance": "agent_inferred",
+                        "source": "introspect",
+                        "expected_resolve_chapter": expected,
+                    },
+                },
+            )
+            if mem.id is None:
+                applied["open"] += 1
+                continue
+            # 已有：reopen（闭环后重开）或补 expected / summary
+            if mem.status != "open":
+                mem.status = "open"
+                mem.start_chapter_index = chapter_index
+                mem.end_chapter_index = None
+            summary = str(item.get("summary", "")).strip()
+            if summary:
+                mem.summary = summary[:_PLOTLINE_SUMMARY_MAX]
+            if expected is not None:
+                meta = dict(mem.memory_metadata or {})
+                meta["expected_resolve_chapter"] = expected
+                mem.memory_metadata = meta
+            applied["open"] += 1
+            continue
+        if action == "close":
+            mem = _find_open_plotline(db, project_id, title)
+            if mem is None:
+                logger.warning("plotline close 匹配失败（title 漂移或无开放伏笔）: %r", title)
+                applied["skipped"] += 1
+                continue
+            mem.status = "closed"
+            mem.end_chapter_index = chapter_index
+            payoff = str(item.get("payoff", "")).strip()
+            if payoff:
+                meta = dict(mem.memory_metadata or {})
+                meta["payoff"] = payoff[:_PLOTLINE_PAYOFF_MAX]
+                mem.memory_metadata = meta
+            applied["close"] += 1
+            continue
+        if action == "postpone":
+            expected = _expected_from(item)
+            if expected is None:
+                logger.warning("plotline postpone 缺有效 expected_resolve_chapter: %r", title)
+                applied["skipped"] += 1
+                continue
+            mem = _find_open_plotline(db, project_id, title)
+            if mem is None:
+                logger.warning("plotline postpone 匹配失败（title 漂移或无开放伏笔）: %r", title)
+                applied["skipped"] += 1
+                continue
+            meta = dict(mem.memory_metadata or {})
+            meta["expected_resolve_chapter"] = expected
+            mem.memory_metadata = meta
+            applied["postpone"] += 1
+            continue
+        logger.warning("plotline update 未知 action: %r", action)
+        applied["skipped"] += 1
+    if commit:
+        db.commit()
+    return applied
 
 
 # ── query_memory ──

@@ -2,17 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
-
-import pytest
 
 from core.harness import AgentHarness, HarnessConfig
 from core.session.transcript import Transcript, strip_api_fields, with_api_content
 from core.tools.base import ToolContext, ToolRegistry, ToolResult, tool
-
 from tests.core.conftest import ScriptedProvider
-
 
 # ── transcript ──
 
@@ -118,7 +113,7 @@ async def test_steering_injected_mid_turn(tmp_path):
     """steer 在回合内注入（openclaw steer 语义）。"""
     harness = make_harness(tmp_path, [{"content": "完成"}])
     harness.queue_steering("换方向")
-    events = await drain(harness, "写")
+    await drain(harness, "写")
     assert len(harness.transcript.messages) >= 1
 
 
@@ -129,7 +124,7 @@ async def test_follow_up_chain_after_stop(tmp_path):
         [{"content": "第一轮回复"}, {"content": "第二轮回复"}],
     )
     harness.queue_follow_up("追加要求")
-    events = await drain(harness, "开始")
+    await drain(harness, "开始")
     # 两个 provider 响应都消费了（follow-up 触发第二回合）
     provider = harness.provider
     assert provider.script_remaining() == 0

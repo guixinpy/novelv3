@@ -10,7 +10,17 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models import ChapterContent, LongformMemory, Project, Setup
+from domain.memory.memory_service import plotline_due_items
 from domain.memory.writing_experience import experience_injection_items
+
+
+# 快照到期伏笔条目文案（超期/临期单行 ≤约 30 字，控制快照总预算）
+def _due_item_text(item: dict) -> str:
+    if item.get("overdue"):
+        if "overdue_by" in item:
+            return f"「{item['title']}」(已超预计 {item['overdue_by']} 章)"
+        return f"「{item['title']}」(已开放 {item['age_chapters']} 章未收)"
+    return f"「{item['title']}」(预计 Ch{item['expected']} 收)"
 
 _FACT_SHEET_FORMAT_RULES = "格式规范：对话用全角引号“”；正文不得含 markdown 标记（**）、备选词（X/Y）、章题重复行。"
 
@@ -69,7 +79,8 @@ def build_project_snapshot(
             arc_desc += f"，收束于 Ch{endgame.get('resolve_before')}"
         parts.append(arc_desc)
 
-    # 开放伏笔
+    # 伏笔账本（09 定稿钩子）：数量 + 超期/临期具体清单（≤3 条，超期优先）——
+    # 计数无行动价值，清单驱动模型决策（收线或显式延期）
     open_lines = (
         db.query(LongformMemory)
         .filter(
@@ -81,6 +92,10 @@ def build_project_snapshot(
     )
     if open_lines:
         parts.append(f"{open_lines} 条开放伏笔")
+    due_items = plotline_due_items(db, project_id)
+    if due_items:
+        desc = "；".join(_due_item_text(item) for item in due_items)
+        parts.append(f"到期伏笔: {desc}")
 
     # 全书事实表：角色 / 地点 / 格式规范
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()

@@ -2,11 +2,14 @@
 
 覆盖：信任度记账（new/reinforce/override）、30 章惰性衰减 + 归档、pinned 豁免、
 预算淘汰、注入条目（最近 + 高信任轮转）、自省服务（解析/幂等/不可解析容错）、
-作者否决入口（delete/pin）。
+作者否决入口（delete/pin）、伏笔账本自省接线（open/close/旧格式兼容）。
 """
 from __future__ import annotations
 
+import json
+
 from app.models import LongformMemory, Project
+from domain.memory.memory_service import track_plotline
 from domain.memory.writing_experience import (
     EXPERIENCE_TYPE,
     INTROSPECT_CATEGORIES,
@@ -417,3 +420,93 @@ def test_delete_and_pin_experience(db_session):
     assert pin_experience(db_session, project.id, "钉住我", pinned=True)["pinned"]
     entry = _by_key(db_session, project.id)["钉住我"]
     assert (entry.memory_metadata or {})["pinned"] is True
+
+
+# ── 伏笔账本：自省接线（09 定稿独立后续项）──
+
+
+def _plotline_rows(db, project_id):
+    return (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "plotline",
+        )
+        .all()
+    )
+
+
+async def test_introspect_applies_plotline_open(db_session):
+    """自省同一次调用输出 open：新伏笔落库（含 expected），experiences 同步记账。"""
+    project = _make_project(db_session)
+    script = ScriptedProvider([
+        {"content": json.dumps({
+            "experiences": [{"key": "钩子收尾", "action": "new", "text": "章末留钩子有效。"}],
+            "plotline_updates": [
+                {"action": "open", "title": "玉佩来历", "summary": "主角祖传玉佩", "expected_resolve_chapter": 50}
+            ],
+        }, ensure_ascii=False)},
+    ])
+    result = await introspect_and_record(
+        db_session, project.id, 1, provider=script, plan_context="章纲", chapter_text="正文",
+    )
+    assert result["status"] == "recorded"
+    assert result["applied"]["new"] == 1
+    assert result["plotline_applied"] == {"open": 1, "close": 0, "postpone": 0, "skipped": 0}
+    plotlines = _plotline_rows(db_session, project.id)
+    assert len(plotlines) == 1
+    m = plotlines[0]
+    assert m.scope_key == "玉佩来历" and m.status == "open"
+    assert m.start_chapter_index == 1
+    assert (m.memory_metadata or {})["expected_resolve_chapter"] == 50
+    assert (m.memory_metadata or {})["source"] == "introspect"
+
+
+async def test_introspect_closes_plotline_with_payoff(db_session):
+    """自省 close 已有伏笔：payoff 落库、结束章记录（title 复用清单逐字一致）。"""
+    project = _make_project(db_session)
+    track_plotline(db_session, project.id, action="open", title="黑市线", chapter_index=1)
+    script = ScriptedProvider([
+        {"content": json.dumps({
+            "experiences": [],
+            "plotline_updates": [{"action": "close", "title": "黑市线", "payoff": "幕后是程砚秋"}],
+        }, ensure_ascii=False)},
+    ])
+    result = await introspect_and_record(db_session, project.id, 5, provider=script, chapter_text="正文")
+    assert result["plotline_applied"]["close"] == 1
+    plotlines = _plotline_rows(db_session, project.id)
+    assert len(plotlines) == 1
+    m = plotlines[0]
+    assert m.status == "closed"
+    assert m.end_chapter_index == 5
+    assert (m.memory_metadata or {})["payoff"] == "幕后是程砚秋"
+
+
+async def test_introspect_old_format_no_plotline_side_effect(db_session):
+    """旧格式自省输出（无 plotline_updates 字段）→ 伏笔段零动作，不炸。"""
+    project = _make_project(db_session)
+    script = ScriptedProvider([
+        {"content": '{"experiences": [{"key": "a", "action": "new", "text": "t"}]}'},
+    ])
+    result = await introspect_and_record(db_session, project.id, 1, provider=script, chapter_text="x")
+    assert result["status"] == "recorded"
+    assert result["applied"]["new"] == 1
+    assert result["plotline_applied"] == {"open": 0, "close": 0, "postpone": 0, "skipped": 0}
+    assert len(_plotline_rows(db_session, project.id)) == 0
+
+
+async def test_introspect_plotline_drift_skipped(db_session):
+    """自省 close 标题漂移（与清单不一致）→ 匹配失败 skipped，不炸流程。"""
+    project = _make_project(db_session)
+    track_plotline(db_session, project.id, action="open", title="黑市线", chapter_index=1)
+    script = ScriptedProvider([
+        {"content": json.dumps({
+            "experiences": [],
+            "plotline_updates": [{"action": "close", "title": "黑市线之谜", "payoff": "x"}],
+        }, ensure_ascii=False)},
+    ])
+    result = await introspect_and_record(db_session, project.id, 2, provider=script, chapter_text="正文")
+    assert result["status"] == "recorded"
+    assert result["plotline_applied"]["skipped"] == 1
+    m = _plotline_rows(db_session, project.id)[0]
+    assert m.status == "open"  # 未被误闭

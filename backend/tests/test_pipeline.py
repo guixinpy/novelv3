@@ -9,7 +9,6 @@ import pytest
 from app.models import ChapterContent, Project, Setup
 from core.workflow.base import WorkflowStatus
 from domain.writing.pipeline import ChapterPipeline
-
 from tests.core.conftest import ScriptedProvider
 
 _GOOD_CHAPTER = (

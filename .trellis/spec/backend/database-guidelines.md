@@ -25,6 +25,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 ```
 
+**`autoflush=False` means same-transaction read-after-write needs explicit `db.flush()`**:
+mutating an ORM instance and then querying for it in the same transaction (before commit)
+will NOT see the pending change. Call `db.flush()` before the dependent query — flush is
+cheap and idempotent. (Verified: plotline `reopen → status=open` then `postpone` lookup
+missed in tests; production sessions share this config.)
+
 SQLite PRAGMAs set on every connection:
 
 ```python

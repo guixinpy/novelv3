@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
+from app.models import ChapterContent, Project, Setup
 from core.tools.base import ToolContext
 from domain.memory.project_snapshot import build_project_snapshot
-from app.models import ChapterContent, LongformMemory, Project, Setup
 
 
 @pytest.fixture
@@ -97,3 +97,47 @@ def test_snapshot_experience_disabled(db_session, project):
     assert snapshot is not None
     assert "写作经验" not in snapshot
     assert "已写 1 章" in snapshot
+
+
+# ── 伏笔账本快照钩子（09 定稿：注入优先超期清单）──
+
+
+def test_snapshot_plotline_due_list(db_session, project):
+    """快照注入超期/临期具体清单（≤3 条，超期优先）；未到期不虚报。"""
+    from domain.memory.memory_service import track_plotline
+
+    for i in range(1, 61):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i, title=f"Ch{i}",
+            content="正文。" * 50, word_count=150, status="generated",
+        ))
+    # 超期（expected=50，当前 60）+ 临期（expected=62）+ 未到期（expected=100）
+    track_plotline(db_session, project.id, "open", title="超期线", chapter_index=10, expected_resolve_chapter=50)
+    track_plotline(db_session, project.id, "open", title="临期线", chapter_index=30, expected_resolve_chapter=62)
+    track_plotline(db_session, project.id, "open", title="未到期线", chapter_index=40, expected_resolve_chapter=100)
+    db_session.commit()
+
+    snapshot = build_project_snapshot(db_session, project.id)
+    assert snapshot is not None
+    assert "3 条开放伏笔" in snapshot
+    assert "到期伏笔" in snapshot
+    assert "超期线" in snapshot and "已超预计 10 章" in snapshot
+    assert "临期线" in snapshot and "预计 Ch62 收" in snapshot
+    assert "未到期线" not in snapshot
+
+
+def test_snapshot_plotline_no_false_due(db_session, project):
+    """无超期/临期时快照保持计数，不虚报到期清单。"""
+    from domain.memory.memory_service import track_plotline
+
+    db_session.add(ChapterContent(
+        project_id=project.id, chapter_index=1, title="Ch1",
+        content="正文。" * 50, word_count=150, status="generated",
+    ))
+    track_plotline(db_session, project.id, "open", title="新线", chapter_index=1, expected_resolve_chapter=100)
+    db_session.commit()
+
+    snapshot = build_project_snapshot(db_session, project.id)
+    assert snapshot is not None
+    assert "1 条开放伏笔" in snapshot
+    assert "到期伏笔" not in snapshot

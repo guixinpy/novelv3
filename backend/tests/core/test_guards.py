@@ -1,7 +1,7 @@
 """护栏测试：五级检测 + 压缩后循环守卫（openclaw PC 护栏）。"""
 from __future__ import annotations
 
-from core.guards.loop_guards import GuardSystem, UNKNOWN_TOOL_ERROR_CODE
+from core.guards.loop_guards import UNKNOWN_TOOL_ERROR_CODE, GuardSystem
 
 
 def record(guards: GuardSystem, name: str, args=None, *, error: bool = False, error_code: str = ""):

@@ -287,7 +287,7 @@ def test_introspect_after_send_out_of_order(client, mock_provider_factory, tmp_p
     import asyncio
 
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
-    from app.models import ChapterContent, LongformMemory
+    from app.models import LongformMemory
 
     project_id = _create_project(client)
     mock_provider_factory.script(

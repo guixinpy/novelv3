@@ -16,6 +16,10 @@ class TrackPlotlineArgs(BaseModel):
     title: str = Field(default="", max_length=100, description="情节线标题")
     summary: str = Field(default="", max_length=500, description="情节线描述")
     chapter_index: int = Field(default=0, ge=0, description="当前章节序号")
+    expected_resolve_chapter: int = Field(
+        default=0, ge=0, description="预计回收章（open 可选；账本据此判定临期/超期）"
+    )
+    payoff: str = Field(default="", max_length=200, description="回收摘要（close 可选，如何回收的）")
 
 
 class QueryMemoryArgs(BaseModel):
@@ -58,13 +62,22 @@ def register_memory_tools(registry: ToolRegistry) -> None:
         name="track_plotline",
         description=(
             "登记、查询或闭环一条情节线/伏笔。操作类型决定行为："
-            "open=创建新情节线，close=闭环，query=查询。"
+            "open=创建新情节线（可带 expected_resolve_chapter 预计回收章），"
+            "close=闭环（可带 payoff 回收摘要），query=查询（返回超期/临期两级标记）。"
+            "伏笔账本：开放超过预计回收章或 30 章未收的伏笔会被标记超期，"
+            "届时应优先回收或显式延期（postpone 暂不支持，需后续开放）。"
         ),
         args_model=TrackPlotlineArgs,
         permission="write",
     )
-    def track_plotline_handler(ctx: ToolContext, action: str, title: str = "", summary: str = "", chapter_index: int = 0) -> ToolResult:
-        return _call(ctx, track_plotline, action, title, summary=summary, chapter_index=chapter_index)
+    def track_plotline_handler(
+        ctx: ToolContext, action: str, title: str = "", summary: str = "",
+        chapter_index: int = 0, expected_resolve_chapter: int = 0, payoff: str = "",
+    ) -> ToolResult:
+        return _call(
+            ctx, track_plotline, action, title, summary=summary, chapter_index=chapter_index,
+            expected_resolve_chapter=expected_resolve_chapter, payoff=payoff,
+        )
 
     @tool(
         registry=registry,
