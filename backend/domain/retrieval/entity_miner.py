@@ -159,8 +159,27 @@ def register_entity_candidates(
     try:
         db.commit()
     except IntegrityError:
-        # 并发写同实体：后提交者撞唯一约束（code-review #14）——回滚不炸回合
+        # 并发写同实体：后提交者撞唯一约束（code-review #14）——回滚后重试一次：
+        # 重查会命中对方已插入的行（走 update 分支），不丢本批其他候选
+        # （code-review 三轮 #6：此前整批 rollback 丢弃同批已成功行且计数失真）
         db.rollback()
+        existing2 = {
+            e.name: e
+            for e in db.query(EntityCandidate)
+            .filter(
+                EntityCandidate.project_id == project_id,
+                EntityCandidate.name.in_(unique),
+            )
+            .all()
+        }
+        for name in unique:
+            entry = existing2.get(name)
+            if entry is None:
+                continue  # 仍不存在（罕见）：放弃该行，不炸
+            if entry.last_chapter != chapter_index:
+                entry.chapter_count = (entry.chapter_count or 1) + 1
+            entry.last_chapter = chapter_index
+        db.commit()
     return added
 
 
@@ -225,8 +244,27 @@ def record_entity_cooccurrences(
     try:
         db.commit()
     except IntegrityError:
-        # 并发写同对共现：后提交者撞唯一约束（code-review #14）——回滚不炸回合
+        # 并发写同对共现：后提交者撞唯一约束（code-review #14）——回滚后重试一次：
+        # 重查命中对方已插入的边（走 count+1 分支），不丢本批其他边
+        # （code-review 三轮 #6：此前整批 rollback 丢数据且计数失真）
         db.rollback()
+        existing2 = {
+            (r.entity_a, r.entity_b): r
+            for r in db.query(EntityRelation)
+            .filter(
+                EntityRelation.project_id == project_id,
+                tuple_(EntityRelation.entity_a, EntityRelation.entity_b).in_(pairs),
+            )
+            .all()
+        }
+        for a, b in pairs:
+            entry = existing2.get((a, b))
+            if entry is None:
+                continue  # 仍不存在（罕见）：放弃该边，不炸
+            if entry.last_chapter != chapter_index:
+                entry.count = (entry.count or 1) + 1
+            entry.last_chapter = chapter_index
+        db.commit()
     return added
 
 

@@ -129,9 +129,14 @@ class AgentHarness:
         """生成中注入方向：当前工具批完成后、下次 LLM 调用前生效。"""
         self._steering.append(text)
 
-    def queue_follow_up(self, text: str) -> None:
-        """完成后追加要求：agent 本要停止时注入再续跑一轮。"""
-        self._follow_ups.append(text)
+    def queue_follow_up(self, text: str, *, ephemeral: bool = False) -> None:
+        """完成后追加要求：agent 本要停止时注入再续跑一轮。
+
+        ephemeral=True：内部恢复建议（护栏/工具错误提示）——注入后不落盘、
+        不重放（code-review 三轮 #9：此前恢复建议作为永久 user 消息在后续
+        所有回合重放，与 nudge 缺陷同构）；用户 followup 端点保持持久。
+        """
+        self._follow_ups.append((text, ephemeral))
 
     def _drain_steering_one(self) -> list[str]:
         """one-at-a-time drain（openclaw QueueMode）：每条 steering 独占一次注入机会。"""
@@ -198,6 +203,7 @@ class AgentHarness:
         async def worker() -> None:
             try:
                 pending = user_text
+                pending_ephemeral = False
                 turns = 0
                 while pending is not None:
                     turns += 1
@@ -206,8 +212,12 @@ class AgentHarness:
                         self._follow_ups.clear()
                         break
                     self._turn_index += 1
-                    await self._run_one_turn(pending, sink)
-                    pending = self._follow_ups.popleft() if self._follow_ups else None
+                    await self._run_one_turn(pending, sink, ephemeral=pending_ephemeral)
+                    if self._follow_ups:
+                        pending, pending_ephemeral = self._follow_ups.popleft()
+                    else:
+                        pending = None
+                        pending_ephemeral = False
             finally:
                 await main_queue.put(None)
 
@@ -240,9 +250,12 @@ class AgentHarness:
 
         yield AgentEnd(turns=self._turn_index)
 
-    async def _run_one_turn(self, user_text: str, sink: EventSink) -> None:
+    async def _run_one_turn(self, user_text: str, sink: EventSink, *, ephemeral: bool = False) -> None:
         self._recovery_injected = False
         user_message = {"role": "user", "content": user_text}
+        if ephemeral:
+            # 内部恢复建议（护栏/工具错误提示）：不落盘、不重放（code-review 三轮 #9）
+            user_message["ephemeral"] = True
         self.transcript.append_message(user_message)
 
         # KV-cache 契约：system 首轮构建字节冻结；动态内容（快照）骑尾部 user 消息
@@ -330,7 +343,8 @@ class AgentHarness:
                 f"【护栏触发 - {level}】检测到循环风险：工具「{tool_name}」重复调用。"
                 f"请更换策略：换用不同的工具或调整参数后再试。"
             )
-            self.queue_follow_up(recover_advice)
+            # ephemeral：内部恢复建议不落盘不重放（code-review 三轮 #9）
+            self.queue_follow_up(recover_advice, ephemeral=True)
         elif exit_detail.get("tool_errors") and not self._recovery_injected:
             self._recovery_injected = True
             samples = exit_detail.get("error_samples") or []
@@ -338,7 +352,9 @@ class AgentHarness:
             total = exit_detail.get("tool_errors", 0)
             if total > len(samples):
                 detail += f"（另有 {total - len(samples)} 次未列出）"
+            # ephemeral：内部恢复建议不落盘不重放（code-review 三轮 #9）
             self.queue_follow_up(
                 f"【工具调用提示】本回合 {total} 次工具调用失败（{detail}）。"
-                f"建议：调整参数重试，或改用其他工具。"
+                f"建议：调整参数重试，或改用其他工具。",
+                ephemeral=True,
             )

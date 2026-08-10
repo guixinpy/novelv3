@@ -19,7 +19,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -147,55 +147,69 @@ def _create_harness(session_id: str, meta: dict, db: Session, gate: ApprovalGate
         snapshot_provider=lambda: build_project_snapshot(
             db, meta["project_id"], include_experience=SELF_OPTIMIZE_ENABLED
         ),
+        # 压缩后状态重注入（code-review 三轮 #13：injection_provider 曾是无生产
+        # 消费方的死扩展点——压缩摘要永不携带设定/大纲，跨压缩存活特性静默失效）
+        injection_provider=lambda: build_project_snapshot(
+            db, meta["project_id"], include_experience=SELF_OPTIMIZE_ENABLED
+        ),
     )
     return harness
 
 
-async def _introspect_after_send(db: Session, session: dict) -> None:
-    """生产路径触发点（09 定稿触发点 2）：harness 回合结束后自省最新章节（fail-open）。
+# 每次 send 最多自省的章数（code-review 三轮：存量书首次 send 全书串行追补
+# 曾阻塞 SSE 数分钟；后台任务 + 分批，成本分散到后续 send）
+_INTROSPECT_BATCH_SIZE = 3
 
-    - 区间推导（code-review #4）：从 introspect_log 已标记的最大章 +1 起到最新章——
-      不依赖 before_max（中断/异常回合漏标记的章在下次 send 自动补齐）；
-      区间内不存在的章号（不连续写入）跳过，不做幻影空正文自省
-    - plan_context：从大纲取章节摘要（code-review #7：09 定稿要求的"锚定章纲"
-      此前在生产路径缺失）
-    - core/harness 领域无关，接线放 API 层；章节幂等由 introspect_and_record 内部保证
-      （会话重启安全）；自省失败仅记日志，不阻塞、不冒泡。
+
+async def _introspect_after_send(db: Session, session: dict) -> None:
+    """生产路径触发点（09 定稿触发点 2）：harness 回合结束后自省未自省的章（fail-open）。
+
+    后台任务执行（BackgroundTasks）——不阻塞 SSE 流、不受客户端断开影响
+    （code-review 三轮：此前在 event_stream 生成器内同步执行，按 10 号契约
+    断开连接的客户端会取消自省，且存量书首次 send 全书串行追补挂起数分钟）。
+    复用请求 db（FastAPI 保证 background 在依赖 teardown 之前执行）。
+
+    - 差集推导（code-review 三轮 #2）：全部章号 - 已自省章号（introspect_log），
+      乱序写章（先写 Ch5 再写 Ch4）不漏检；每次最多 _INTROSPECT_BATCH_SIZE 章
+    - plan_context：从大纲取章节摘要（锚定章纲）
+    - 幂等由 introspect_and_record 内部保证；失败仅记日志（fail-open）。
     """
     if not SELF_OPTIMIZE_ENABLED:
         return
     try:
         from app.models import ChapterContent, LongformMemory, Outline
+        from domain.memory.memory_service import aggregate_pending_arc_summaries
         from domain.memory.writing_experience import INTROSPECT_LOG_TYPE, introspect_and_record
 
         harness: AgentHarness = session["harness"]
         project_id = session["meta"]["project_id"]
-        latest_row = (
+        all_chapters = (
             db.query(ChapterContent.chapter_index)
             .filter(ChapterContent.project_id == project_id)
-            .order_by(ChapterContent.chapter_index.desc())
-            .first()
+            .all()
         )
-        if latest_row is None:
+        if not all_chapters:
             return
-        latest = latest_row[0]
-        last_log_row = (
-            db.query(LongformMemory.start_chapter_index)
+        logged = {
+            r[0]
+            for r in db.query(LongformMemory.start_chapter_index)
             .filter(
                 LongformMemory.project_id == project_id,
                 LongformMemory.memory_type == INTROSPECT_LOG_TYPE,
             )
-            .order_by(LongformMemory.start_chapter_index.desc())
-            .first()
-        )
-        start = (last_log_row[0] if last_log_row is not None else 0) + 1
+            .all()
+            if r[0] is not None
+        }
+        pending = sorted({c[0] for c in all_chapters} - logged)[:_INTROSPECT_BATCH_SIZE]
+        if not pending:
+            return
         outline = db.query(Outline).filter(Outline.project_id == project_id).first()
         outline_summaries: dict[int, str] = {}
         if outline is not None:
             for ch in outline.chapters or []:
                 if isinstance(ch, dict) and isinstance(ch.get("chapter_index"), int):
                     outline_summaries[int(ch["chapter_index"])] = str(ch.get("summary") or "")
-        for chapter_index in range(start, latest + 1):
+        for chapter_index in pending:
             chapter = (
                 db.query(ChapterContent)
                 .filter(
@@ -205,7 +219,7 @@ async def _introspect_after_send(db: Session, session: dict) -> None:
                 .first()
             )
             if chapter is None:
-                continue  # 不连续章号：跳过幻影区间（code-review #4）
+                continue
             await introspect_and_record(
                 db,
                 project_id,
@@ -215,10 +229,8 @@ async def _introspect_after_send(db: Session, session: dict) -> None:
                 chapter_text=chapter.content,
                 review_reasons="",
             )
-        # B4（openhuman 封箱聚合）：已完成弧线的 LLM 内容级联摘要——顺带聚合，
-        # 最迟延迟一个 send；fail-open 由 aggregate_pending 内部保证
-        from domain.memory.memory_service import aggregate_pending_arc_summaries
-
+        # B4（openhuman 封箱聚合）：仅在确有新章自省时顺带聚合（纯讨论回合
+        # 不触发——code-review 三轮 #7：此前每次 send 都触发并无限重试）
         await aggregate_pending_arc_summaries(db, project_id, provider=harness.provider)
     except Exception:  # noqa: BLE001 - fail-open：自省失败不阻塞写作流程
         logger.exception("章末自省失败（fail-open 已跳过）")
@@ -277,10 +289,22 @@ def create_session(payload: SessionCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/agent/sessions/{session_id}/messages")
-async def send_message(session_id: str, payload: MessageSend, db: Session = Depends(get_db)):
+async def send_message(
+    session_id: str,
+    payload: MessageSend,
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]  # FastAPI 特殊参数，非响应字段
+):
     session = _get_session(session_id, db)
     harness: AgentHarness = session["harness"]
     harness.max_turns_per_send = MAX_TURNS_PER_SEND
+
+    # 09 定稿触发点 2（生产路径）：自省注册为后台任务——SSE 流立即结束、
+    # 客户端按 10 号契约收到 agent_end 即可关闭连接（code-review 三轮 #1：
+    # 此前自省在生成器内同步执行，按契约断开的客户端 CancelledError 取消自省，
+    # 存量书首次 send 全书串行追补挂起数分钟且每轮重复烧成本）
+    if background_tasks is not None:
+        background_tasks.add_task(_introspect_after_send, db, session)
 
     async def event_stream():
         async for event in harness.send(payload.content, idempotency_key=payload.idempotency_key):
@@ -297,16 +321,6 @@ async def send_message(session_id: str, payload: MessageSend, db: Session = Depe
                 default=str,
             )
             yield f"event: {event.kind.value}\ndata: {data}\n\n"
-        # 09 定稿触发点 2（生产路径）：自省在流外执行——harness.send 已结束
-        # （写锁已释放，并发 send 不排队）、agent_end 已发出（code-review #8：
-        # 流内串行自省曾阻塞 agent_end 数分钟）。BaseException 兜底含
-        # CancelledError（客户端断开）——自省是收尾工作，尽量完成。
-        try:
-            await _introspect_after_send(db, session)
-        except GeneratorExit:
-            raise
-        except BaseException:  # noqa: BLE001 - fail-open：自省失败不阻塞、不冒泡
-            logger.exception("章末自省失败（fail-open 已跳过）")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

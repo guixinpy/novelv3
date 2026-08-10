@@ -25,6 +25,7 @@ class ScriptedProvider(Provider):
         self.requests: list[list[dict]] = []   # 每次请求的 messages 形状
         self.tools_seen: list[list] = []
         self.error_after: int = 0              # 产出 N 个字符后抛 ProviderError（部分流中断）
+        self.error_retryable: bool = True      # 部分流中断的 retryable 标志
 
     def script_remaining(self) -> int:
         return len(self._script)
@@ -49,10 +50,10 @@ class ScriptedProvider(Provider):
         content = step.get("content", "")
         if content:
             if self.error_after and len(content) > self.error_after:
-                # 部分流中断：先产出前 N 个字符，再抛可重试错误
+                # 部分流中断：先产出前 N 个字符，再抛错误
                 # （provider 层部分流不可重试——防重复输出）
                 yield TextDelta(text=content[: self.error_after])
-                raise ProviderError("partial stream failure", retryable=True)
+                raise ProviderError("partial stream failure", retryable=self.error_retryable)
             yield TextDelta(text=content)
         usage = step.get("usage", Usage())
         if "tool_calls" in step and step["tool_calls"]:

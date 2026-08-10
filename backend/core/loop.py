@@ -56,6 +56,14 @@ _EMPTY_RESPONSE_NUDGE = (
 _MAX_EMPTY_RESPONSE_RETRIES = 2
 
 
+def _is_retryable(exc: Exception) -> bool:
+    """部分流恢复判定：仅 ProviderError 且 retryable 才恢复（code-review 三轮 #10：
+    401/400/内部 bug 等非重试错误不应把截断残片静默当完整回复）。"""
+    from core.providers.base import ProviderError
+
+    return isinstance(exc, ProviderError) and exc.retryable
+
+
 @dataclass
 class TurnResult:
     stop_reason: StopReason
@@ -145,9 +153,11 @@ async def run_turn(
                 elif isinstance(event, ProviderResponse):
                     response = event
         except Exception as exc:  # noqa: BLE001 - provider 异常编码为消息而非静默
-            if streamed_text:
+            if streamed_text and _is_retryable(exc):
                 # 部分流恢复（hermes）：网络中断但已有流式文本——不丢已生成内容，
-                # 累积文本作为最终回复（provider 层已保证部分流不重试防重复输出）
+                # 累积文本作为最终回复（provider 层已保证部分流不重试防重复输出）。
+                # 仅对可重试错误恢复（code-review 三轮 #10：401/400 等非重试错误
+                # 曾把截断残片静默当完整回复，错误无可见痕迹）
                 partial = "".join(streamed_text)
                 history.append({"role": "assistant", "content": partial})
                 await emit(AssistantMessage(content=partial))
@@ -231,7 +241,9 @@ async def run_turn(
 
         if steering_source is not None:
             for steering_text in steering_source():
-                history.append({"role": "user", "content": steering_text})
+                # steering 是回合内临时方向：不落盘不重放（code-review 三轮 #9：
+                # 曾作为永久 user 消息重放，改方向后旧指令仍共存）
+                history.append({"role": "user", "content": steering_text, "ephemeral": True})
 
         if token_budget.exhausted:
             stop_reason = StopReason.TOKEN_BUDGET_EXHAUSTED

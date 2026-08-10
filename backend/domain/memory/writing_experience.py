@@ -247,7 +247,8 @@ def _decay_stale(db: Session, project_id: str, category: str, chapter_index: int
             if trust <= 0:
                 entry.status = _ARCHIVED
             entry.memory_metadata = meta
-            entry.updated_at = _now()
+            # 不刷新 updated_at（code-review 三轮 #11：降权经验曾因时间戳最新
+            # 反被快照"最近 2 条"优先注入——衰减机制与注入排序自相矛盾）
 
 
 def _enforce_budget(db: Session, project_id: str, category: str, *, commit: bool = True) -> None:
@@ -344,14 +345,45 @@ async def introspect_and_record(
 
 
 def _parse_introspect_output(content: str) -> list[dict]:
-    """解析自省 JSON 输出（容错：解析失败记录日志并返回空，不炸流程）。"""
+    """解析自省 JSON 输出（容错：解析失败记录日志并返回空，不炸流程）。
+
+    健壮解析（code-review 三轮 #12）：完整 json.loads 优先；失败后按大括号配对
+    定位真正的 JSON 边界（跳过字符串内的括号）——LLM 尾部散文含多余 } 时
+    此前 rfind 切块非法导致整段解析失败、经验永久丢失。
+    """
     text = content.strip()
-    try:
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end == -1:
-            raise ValueError("no json object")
-        parsed = json.loads(text[start : end + 1])
-    except (ValueError, json.JSONDecodeError):
+    parsed = None
+    if text.startswith("{"):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+    if parsed is None:
+        start = text.find("{")
+        if start != -1:
+            depth = 0
+            in_str = False
+            for i in range(start, len(text)):
+                ch = text[i]
+                if in_str:
+                    if ch == "\\":
+                        continue
+                    if ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            parsed = json.loads(text[start : i + 1])
+                        except json.JSONDecodeError:
+                            parsed = None
+                        break
+    if parsed is None:
         logger.warning("introspect output not parseable, dropped: %.100s", text)
         return []
     experiences = parsed.get("experiences") if isinstance(parsed, dict) else None

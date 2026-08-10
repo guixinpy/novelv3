@@ -194,6 +194,19 @@ async def test_partial_stream_recovered_on_interrupt(scripted_provider_factory):
     assert turn_ended.stop_reason == StopReason.COMPLETED.value
 
 
+async def test_partial_stream_not_recovered_on_non_retryable(scripted_provider_factory):
+    """code-review 三轮 #10：非重试错误（401/400）不恢复部分流——截断残片
+    不静默当完整回复（走 INTERRUPTED + 错误消息）。"""
+    provider = scripted_provider_factory([{"content": "已生成的一半正文…"}])
+    provider.error_after = 5
+    provider.error_retryable = False  # 非重试错误
+    result, events, turn_ended = await run(provider, make_registry())
+    assert result.stop_reason == StopReason.INTERRUPTED
+    assert result.partial_response == ""  # 不把残片当部分回复
+    # 错误作为消息可见（模型可感知）
+    assert any(m.get("role") == "assistant" and "模型调用失败" in m.get("content", "") for m in result.messages)
+
+
 async def test_provider_error_becomes_message(scripted_provider_factory):
     """provider 异常编码为消息（INTERRUPTED），不静默不炸。"""
     provider = scripted_provider_factory([{"content": "", "error": "network down", "retryable": True}])

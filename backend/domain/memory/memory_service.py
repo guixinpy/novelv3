@@ -37,17 +37,40 @@ def _channel_limits_desc() -> str:
 
 
 def _cap_by_channel(memories: list, global_limit: int) -> list:
-    """按通道配额截断（保持输入排序：更新时间倒序 + author_explicit 优先）。"""
+    """按通道配额轮询截断（code-review 三轮 #5：此前按合并顺序先到先得，
+    默认 limit=5 时先出现的通道耗尽全部额度、低频通道仍零代表——轮询保证
+    每通道都有份额，直到全局满额）。
+
+    保持输入排序（更新时间倒序 + author_explicit 优先）：轮询是"取该通道
+    当前位置的下一条"，不重排。
+    """
     counts: dict[str, int] = {}
     capped: list = []
+    # 轮询：按通道分组索引，每轮每通道取 1 条（未达配额），直到全局满额
+    by_channel: dict[str, list] = {}
+    order: list[str] = []
     for m in memories:
         ch = m.memory_type
-        if counts.get(ch, 0) >= _channel_limit(ch):
-            continue
-        counts[ch] = counts.get(ch, 0) + 1
-        capped.append(m)
-        if len(capped) >= global_limit:
-            break
+        if ch not in by_channel:
+            by_channel[ch] = []
+            order.append(ch)
+        by_channel[ch].append(m)
+    cursor = {ch: 0 for ch in order}
+    filled = True
+    while filled and len(capped) < global_limit:
+        filled = False
+        for ch in order:
+            if len(capped) >= global_limit:
+                break
+            if counts.get(ch, 0) >= _channel_limit(ch):
+                continue
+            idx = cursor[ch]
+            if idx >= len(by_channel[ch]):
+                continue
+            capped.append(by_channel[ch][idx])
+            cursor[ch] = idx + 1
+            counts[ch] = counts.get(ch, 0) + 1
+            filled = True
     return capped
 
 
@@ -381,12 +404,19 @@ def _close_active_arcs(db: Session, project_id: str) -> None:
             },
         )
         # 同名弧线重复 define 时显式覆盖（get_or_create 命中已有键跳过 defaults，
-        # 否则新摘要永不落库——code-review #13；跨度字段一并覆盖——二轮 R9）
+        # 否则新摘要永不落库——code-review #13；跨度字段一并覆盖——二轮 R9）。
+        # 清聚合标记与 arc_id 绑定（code-review 三轮 #8：同名弧线共享 scope_key=title，
+        # 覆盖时保留旧 aggregated 标记会造成"文本=清单版、标记=已聚合"错配）
         mem.summary = arc_summary_text
         mem.title = f"弧线摘要: {a.title}"
         mem.start_chapter_index = a.start_chapter_index
         mem.end_chapter_index = a.end_chapter_index
         mem.status = "completed"
+        _meta = dict(mem.memory_metadata or {})
+        _meta.pop("aggregated", None)
+        _meta.pop("aggregate_failed", None)
+        _meta["arc_id"] = a.id
+        mem.memory_metadata = _meta
 
 
 def plan_arc(
@@ -540,12 +570,18 @@ def plan_arc(
                     "memory_metadata": {"provenance": "agent_inferred", "source": "arc_consolidation"},
                 },
             )
-            # 显式覆盖（同名弧线复用场景，code-review #13；跨度字段一并覆盖——二轮 R9）
+            # 显式覆盖（同名弧线复用场景，code-review #13；跨度字段一并覆盖——二轮 R9）。
+            # 清聚合标记与 arc_id 绑定（code-review 三轮 #8：同名弧线串扰）
             mem.summary = arc_summary
             mem.title = f"弧线摘要: {active_arc.title}"
             mem.start_chapter_index = active_arc.start_chapter_index
             mem.end_chapter_index = active_arc.end_chapter_index
             mem.status = "completed"
+            _meta = dict(mem.memory_metadata or {})
+            _meta.pop("aggregated", None)
+            _meta.pop("aggregate_failed", None)
+            _meta["arc_id"] = active_arc.id
+            mem.memory_metadata = _meta
             db.commit()
             result["arc_consolidated"] = True
             result["arc_summary"] = arc_summary
@@ -616,8 +652,17 @@ async def aggregate_arc_summary(
         )
         .first()
     )
-    if arc_summary is not None and (arc_summary.memory_metadata or {}).get("aggregated"):
-        return {"status": "skipped", "reason": "already_aggregated"}
+    meta0 = dict(arc_summary.memory_metadata or {}) if arc_summary is not None else {}
+    # 同名弧线共享 scope_key=title 的防串扰（code-review 三轮 #8）：arc_summary
+    # 绑定 arc_id——非当前弧线的行视为新弧线（清聚合标记重新聚合），且失败
+    # 标记（aggregate_failed）后不再无限重试
+    if arc_summary is not None:
+        if meta0.get("arc_id") != arc.id:
+            meta0 = {}  # 上一同名弧线的行：重置（覆盖时 _close_active_arcs 同步清标记）
+        elif meta0.get("aggregated"):
+            return {"status": "skipped", "reason": "already_aggregated"}
+        elif meta0.get("aggregate_failed"):
+            return {"status": "skipped", "reason": "aggregate_failed_earlier"}
 
     chapters = (
         db.query(ChapterContent)
@@ -647,10 +692,12 @@ async def aggregate_arc_summary(
                 {"role": "user", "content": user_prompt},
             ]
         )
-    except Exception:  # noqa: BLE001 - 聚合失败保持标题清单版（fail-open）
+    except Exception:  # noqa: BLE001 - 聚合失败保持标题清单版 + 落失败标记（不再重试）
+        _mark_aggregate_failed(db, arc_summary, arc, reason="provider_error")
         return {"status": "failed", "reason": "provider_error"}
     text = (response.content or "").strip()
     if not text:
+        _mark_aggregate_failed(db, arc_summary, arc, reason="empty_output")
         return {"status": "failed", "reason": "empty_output"}
 
     if arc_summary is None:
@@ -668,10 +715,23 @@ async def aggregate_arc_summary(
     arc_summary.summary = text
     meta = dict(arc_summary.memory_metadata or {})
     meta["aggregated"] = True
+    meta["aggregate_failed"] = False
+    meta["arc_id"] = arc.id
     meta["source"] = "arc_aggregation_llm"
     arc_summary.memory_metadata = meta
     db.commit()
     return {"status": "aggregated", "arc": arc.title, "summary_len": len(text)}
+
+
+def _mark_aggregate_failed(db: Session, arc_summary, arc, *, reason: str) -> None:
+    """聚合失败落标记（code-review 三轮 #7：无标记 → 每次 send 无限重试烧成本）。"""
+    meta = dict(arc_summary.memory_metadata or {}) if arc_summary is not None else {}
+    meta["aggregate_failed"] = True
+    meta["aggregate_failed_reason"] = reason
+    meta["arc_id"] = arc.id
+    if arc_summary is not None:
+        arc_summary.memory_metadata = meta
+        db.commit()
 
 
 async def aggregate_pending_arc_summaries(db: Session, project_id: str, *, provider) -> list[dict]:

@@ -91,6 +91,27 @@ def test_mixed_query_low_frequency_channel_has_quota(db_session):
     assert by_type.get("plotline", 0) <= 5
 
 
+def test_mixed_query_round_robin_at_default_limit(db_session):
+    """code-review 三轮 #5：默认 limit=5 时轮询分配——低频通道不被高频通道耗尽。"""
+    project = Project(name="测试项目7")
+    db_session.add(project)
+    db_session.commit()
+    _seed(db_session, project.id, "plotline", 15, "伏笔")
+    _seed(db_session, project.id, "arc_summary", 2, "弧线")
+    _seed(db_session, project.id, "chapter", 10, "章记忆")
+
+    result = query_memory(db_session, project.id, memory_type="all", limit=5)
+    memories = result["memories"]
+    assert len(memories) == 5
+    by_type: dict[str, int] = {}
+    for m in memories:
+        by_type[m["type"]] = by_type.get(m["type"], 0) + 1
+    # 每通道都有代表（轮询保底），且不超过各自配额
+    assert by_type.get("arc_summary", 0) >= 1
+    assert by_type.get("chapter", 0) >= 1
+    assert by_type.get("plotline", 0) <= 5
+
+
 def test_archived_experience_filtered_from_query(db_session):
     """code-review #6：archived 经验不进记忆查询（与快照注入语义一致）。"""
     from app.models import LongformMemory

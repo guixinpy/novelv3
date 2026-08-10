@@ -279,6 +279,49 @@ def test_send_writes_chapter_then_introspects(client, mock_provider_factory, tmp
     assert (exp[0].memory_metadata or {})["trust_score"] == 1
 
 
+def test_introspect_after_send_out_of_order(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
+    """code-review 三轮 #2：乱序写章（先写 Ch3 再回写 Ch1）不自省漏检。
+
+    差集推导：全部章号 - 已自省章号，与写入顺序无关；每批上限 3 章。
+    """
+    import asyncio
+
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    from app.models import ChapterContent, LongformMemory
+
+    project_id = _create_project(client)
+    mock_provider_factory.script(
+        [
+            {"content": "我来写", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 3, "content": "第三章正文。" * 20}}]},
+            {"content": "继续写", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文。" * 20}}]},
+            {"content": "完成", "tool_calls": []},
+            {"content": '{"experiences": []}'},
+            {"content": '{"experiences": []}'},
+        ]
+    )
+    sid = _create_session(client, project_id)
+    _send_with_auto_approval(client, sid, "写第三章和第一章")
+    session = agent_api._sessions[sid]
+
+    async def run_introspect():
+        await agent_api._introspect_after_send(db_session, session)
+
+    # 直接驱动后台任务（差集逻辑单测：两次调用覆盖两章）
+    asyncio.run(run_introspect())
+    asyncio.run(run_introspect())
+    logs = {
+        r[0]
+        for r in db_session.query(LongformMemory.start_chapter_index)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "introspect_log",
+        )
+        .all()
+    }
+    # Ch1 与 Ch3 都被自省（乱序不漏检）；Ch2 不存在
+    assert 1 in logs and 3 in logs
+
+
 def test_send_without_chapter_skips_introspect(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
     """未写新章节的回合不触发自省（无 chapter 时不调用 provider 自省）。"""
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
