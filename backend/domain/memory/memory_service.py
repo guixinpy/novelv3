@@ -17,7 +17,7 @@ from domain.retrieval.athena_retrieval import search_retrieval
 logger = logging.getLogger(__name__)
 
 _PLOTLINE_TITLE_MAX = 60
-_PLOTLINE_TITLE_TEMPLATE = "标题格式建议：核心冲突关键词，如「林舟身世之谜」；避免含章节序号。"
+_PLOTLINE_TITLE_TEMPLATE = "标题格式建议：核心冲突关键词，如「主角身世之谜」；避免含章节序号。"
 _PLOTLINE_STALE_AFTER = 30
 # 伏笔账本（09 定稿独立后续项）：临期窗口 = 距预计回收章 ≤3 章
 _PLOTLINE_RESOLVE_NEAR = 3
