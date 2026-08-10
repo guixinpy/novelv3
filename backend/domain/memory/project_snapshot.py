@@ -13,14 +13,23 @@ from app.models import ChapterContent, LongformMemory, Project, Setup
 from domain.memory.memory_service import plotline_due_items
 from domain.memory.writing_experience import experience_injection_items
 
+# 快照到期伏笔条目文案（超期/临期单行 ≤约 30 字，控制快照总预算——
+# title 截断到 12 字 + 省略号，code-review 4 项 #6：此前完整 title 单条约 74 字，
+# 3 条 230 字超快照「≤约 400 字」预算 40%）
+_DUE_TITLE_MAX = 12
 
-# 快照到期伏笔条目文案（超期/临期单行 ≤约 30 字，控制快照总预算）
+
+def _clip_title(title: str) -> str:
+    return title[:_DUE_TITLE_MAX] + ("…" if len(title) > _DUE_TITLE_MAX else "")
+
+
 def _due_item_text(item: dict) -> str:
+    title = _clip_title(str(item["title"]))
     if item.get("overdue"):
         if "overdue_by" in item:
-            return f"「{item['title']}」(已超预计 {item['overdue_by']} 章)"
-        return f"「{item['title']}」(已开放 {item['age_chapters']} 章未收)"
-    return f"「{item['title']}」(预计 Ch{item['expected']} 收)"
+            return f"「{title}」(超{item['overdue_by']}章)"
+        return f"「{title}」(开{item['age_chapters']}章未收)"
+    return f"「{title}」(Ch{item['expected']}收)"
 
 _FACT_SHEET_FORMAT_RULES = "格式规范：对话用全角引号“”；正文不得含 markdown 标记（**）、备选词（X/Y）、章题重复行。"
 
@@ -80,19 +89,11 @@ def build_project_snapshot(
         parts.append(arc_desc)
 
     # 伏笔账本（09 定稿钩子）：数量 + 超期/临期具体清单（≤3 条，超期优先）——
-    # 计数无行动价值，清单驱动模型决策（收线或显式延期）
-    open_lines = (
-        db.query(LongformMemory)
-        .filter(
-            LongformMemory.project_id == project_id,
-            LongformMemory.memory_type == "plotline",
-            LongformMemory.status == "open",
-        )
-        .count()
-    )
+    # 计数无行动价值，清单驱动模型决策（收线或显式延期）。
+    # 单次查询：count 与 due 判定共用（code-review 4 项 #13：此前两次查询）
+    open_lines, due_items = plotline_due_items(db, project_id)
     if open_lines:
         parts.append(f"{open_lines} 条开放伏笔")
-    due_items = plotline_due_items(db, project_id)
     if due_items:
         desc = "；".join(_due_item_text(item) for item in due_items)
         parts.append(f"到期伏笔: {desc}")

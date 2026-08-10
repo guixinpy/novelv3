@@ -121,8 +121,9 @@ def test_snapshot_plotline_due_list(db_session, project):
     assert snapshot is not None
     assert "3 条开放伏笔" in snapshot
     assert "到期伏笔" in snapshot
-    assert "超期线" in snapshot and "已超预计 10 章" in snapshot
-    assert "临期线" in snapshot and "预计 Ch62 收" in snapshot
+    # 压缩文案（code-review 4 项 #6：单条 ≤约 30 字预算）
+    assert "超期线" in snapshot and "超10章" in snapshot
+    assert "临期线" in snapshot and "Ch62收" in snapshot
     assert "未到期线" not in snapshot
 
 

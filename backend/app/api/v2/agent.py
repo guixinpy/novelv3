@@ -215,7 +215,7 @@ async def _introspect_after_send(db: Session, session: dict) -> None:
             )
             if chapter is None:
                 continue
-            await introspect_and_record(
+            result = await introspect_and_record(
                 db,
                 project_id,
                 chapter_index,
@@ -224,6 +224,20 @@ async def _introspect_after_send(db: Session, session: dict) -> None:
                 chapter_text=chapter.content,
                 review_reasons="",
             )
+            # 伏笔账本反馈（code-review 4 项 #8）：close/postpone 被拒（title 漂移）
+            # 此前只记域内日志、调用方丢弃返回值——模型永远不知道自己输出的更新
+            # 未生效。此处汇总记 warning，作为漂移率的可观测入口。
+            plotline_applied = result.get("plotline_applied") or {}
+            if plotline_applied.get("skipped"):
+                logger.warning(
+                    "章末自省 Ch%d 伏笔更新 %d 条被跳过（title 漂移/非法），"
+                    "本批 open=%d close=%d postpone=%d",
+                    chapter_index,
+                    plotline_applied["skipped"],
+                    plotline_applied["open"],
+                    plotline_applied["close"],
+                    plotline_applied["postpone"],
+                )
         # B4（openhuman 封箱聚合）：仅在确有新章自省时顺带聚合（纯讨论回合
         # 不触发——code-review 三轮 #7：此前每次 send 都触发并无限重试）
         await aggregate_pending_arc_summaries(db, project_id, provider=harness.provider)

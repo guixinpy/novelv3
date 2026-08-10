@@ -140,9 +140,11 @@ def _build_introspect_user_prompt(
         f"已有经验键（优先复用）：{('、'.join(candidate_keys)) or '（无）'}",
     ]
     if open_plotlines:
+        # start_chapter_text 由 open_plotline_rows 渲染（start=NULL 时不出现
+        # 「埋于 ChNone」——code-review 4 项 #2）
         desc = "；".join(
             (
-                f"{p['title']}(埋于 Ch{p['start_chapter']}"
+                f"{p['title']}({p.get('start_chapter_text') or '埋设章未知'}"
                 f"{', 预计 Ch' + str(p['expected_resolve_chapter']) + ' 收' if p['expected_resolve_chapter'] else ''}"
                 f"{', 已超期' if p.get('overdue') else ''})"
             )

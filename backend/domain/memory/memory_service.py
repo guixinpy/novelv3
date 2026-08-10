@@ -67,28 +67,45 @@ class MemoryServiceError(Exception):
     """记忆服务业务错误（工具层转为 ToolResult.fail）。"""
 
 
+def _latest_chapter_index(db: Session, project_id: str) -> int:
+    """最新章节号（simplify：快照/query/自省清单/弧线进度四处的重复查询收敛）。"""
+    row = (
+        db.query(ChapterContent.chapter_index)
+        .filter(ChapterContent.project_id == project_id)
+        .order_by(ChapterContent.chapter_index.desc())
+        .first()
+    )
+    return row[0] if row else 0
+
+
 def _plotline_due_state(m, latest_index: int) -> dict | None:
-    """伏笔到期标记（伏笔账本判定，query 与快照钩子共用防规则漂移）。
+    """伏笔到期标记（伏笔账本判定，query/快照/自省清单共用防规则漂移）。
 
     返回 {"overdue": True, "overdue_by"|"age_chapters", "expected"} /
     {"due_soon": True, "resolves_in", "expected"}，未到期返回 None。
     """
-    if m.status != "open" or m.start_chapter_index is None:
+    if m.status != "open":
         return None
     expected = (m.memory_metadata or {}).get("expected_resolve_chapter")
     if isinstance(expected, int) and expected >= 1:
+        # 有计划：按 expected 判定（无需埋设章；start=NULL 也生效——code-review 4 项 #2）
         if latest_index > expected:
             return {"overdue": True, "overdue_by": latest_index - expected, "expected": expected}
         if latest_index >= expected - _PLOTLINE_RESOLVE_NEAR:
             return {"due_soon": True, "resolves_in": expected - latest_index, "expected": expected}
         return None
-    if latest_index - m.start_chapter_index > _PLOTLINE_STALE_AFTER:
+    # 无计划：30 章 stale 兜底（需埋设章）
+    if m.start_chapter_index is not None and latest_index - m.start_chapter_index > _PLOTLINE_STALE_AFTER:
         return {"overdue": True, "age_chapters": latest_index - m.start_chapter_index, "expected": None}
     return None
 
 
-def plotline_due_items(db: Session, project_id: str, limit: int = 3) -> list[dict]:
-    """到期伏笔条目（超期优先 → 临期，≤limit）：供快照注入钩子（09 定稿）。"""
+def plotline_due_items(db: Session, project_id: str, limit: int = 3) -> tuple[int, list[dict]]:
+    """到期伏笔条目：(开放总数, 超期/临期清单 ≤limit 条，超期优先)。
+
+    供快照注入钩子（09 定稿）：单次查询出全部开放行，count 与 due 判定共用
+    （code-review 4 项 #13：此前 count 与 due 各查一次）。
+    """
     rows = (
         db.query(LongformMemory)
         .filter(
@@ -98,15 +115,10 @@ def plotline_due_items(db: Session, project_id: str, limit: int = 3) -> list[dic
         )
         .all()
     )
+    total = len(rows)
     if not rows:
-        return []
-    latest_row = (
-        db.query(ChapterContent.chapter_index)
-        .filter(ChapterContent.project_id == project_id)
-        .order_by(ChapterContent.chapter_index.desc())
-        .first()
-    )
-    latest_index = latest_row[0] if latest_row else 0
+        return 0, []
+    latest_index = _latest_chapter_index(db, project_id)
     ranked = []
     for m in rows:
         due = _plotline_due_state(m, latest_index)
@@ -114,7 +126,7 @@ def plotline_due_items(db: Session, project_id: str, limit: int = 3) -> list[dic
             continue
         ranked.append({"title": m.title, **due})
     ranked.sort(key=lambda e: (0 if e.get("overdue") else 1, e.get("expected") or 0))
-    return ranked[:limit]
+    return total, ranked[:limit]
 
 
 def _open_plotlines_containing(db: Session, project_id: str, items: list[str]) -> list[str]:
@@ -188,25 +200,22 @@ def track_plotline(
             return {"action": "already_exists", "id": existing.id, "title": title, "status": "open"}
         existing.status = "open"
         existing.summary = summary or existing.summary
-        existing.start_chapter_index = chapter_index or existing.start_chapter_index
+        # 保留首次埋设章（与自省路径一致，code-review 4 项 #12）
         existing.end_chapter_index = None
-        existing.memory_metadata = {**(existing.memory_metadata or {}), **meta}
+        m = dict(existing.memory_metadata or {})
+        # 清旧计划与回收记录（code-review 4 项 #3：残留 expected 让刚重开的线
+        # 立即误判超期；残留 payoff 让模型误以为悬念已解）
+        m.pop("expected_resolve_chapter", None)
+        m.pop("payoff", None)
+        m.update(meta)
+        existing.memory_metadata = m
         db.commit()
         return {"action": "reopened", "id": existing.id, "title": title, "status": "open"}
 
     if action == "close":
         if not title:
             raise MemoryServiceError("close 操作需要 title 参数。")
-        mem = (
-            db.query(LongformMemory)
-            .filter(
-                LongformMemory.project_id == project_id,
-                LongformMemory.memory_type == "plotline",
-                LongformMemory.scope_key == title,
-                LongformMemory.status == "open",
-            )
-            .first()
-        )
+        mem = _find_open_plotline(db, project_id, title)
         if not mem:
             raise MemoryServiceError(f"未找到开放的情节线「{title}」。")
         mem.status = "closed"
@@ -217,6 +226,28 @@ def track_plotline(
             mem.memory_metadata = m
         db.commit()
         return {"action": "closed", "id": mem.id, "title": title, "status": "closed"}
+
+    if action == "postpone":
+        # 显式延期（code-review 4 项 #9：stale_warning 文案「或显式延期」此前
+        # 无工具可执行，唯一通道是自省自动提取）
+        if not title:
+            raise MemoryServiceError("postpone 操作需要 title 参数。")
+        if not expected_resolve_chapter or expected_resolve_chapter < 1:
+            raise MemoryServiceError("postpone 操作需要有效的 expected_resolve_chapter（≥1）。")
+        mem = _find_open_plotline(db, project_id, title)
+        if not mem:
+            raise MemoryServiceError(f"未找到开放的情节线「{title}」。")
+        m = dict(mem.memory_metadata or {})
+        m["expected_resolve_chapter"] = int(expected_resolve_chapter)
+        mem.memory_metadata = m
+        db.commit()
+        return {
+            "action": "postponed",
+            "id": mem.id,
+            "title": title,
+            "status": "open",
+            "expected_resolve_chapter": int(expected_resolve_chapter),
+        }
 
     if action == "query":
         base = db.query(LongformMemory).filter(
@@ -248,13 +279,7 @@ def track_plotline(
             ],
         }
         if memories:
-            latest_row = (
-                db.query(ChapterContent.chapter_index)
-                .filter(ChapterContent.project_id == project_id)
-                .order_by(ChapterContent.chapter_index.desc())
-                .first()
-            )
-            latest_index = latest_row[0] if latest_row else 0
+            latest_index = _latest_chapter_index(db, project_id)
             # 账本两级标记（伏笔账本）：超期（超 expected 或无 expected 超 30 章）/
             # 临期（距 expected ≤3 章）。stale_warning 键保留（合并文案，兼容旧消费方）。
             overdue_open: list[str] = []
@@ -293,20 +318,32 @@ def track_plotline(
                 result["fallback_note"] = (
                     f"未找到标题匹配「{title}」的情节线，已回退最近创建的开放情节线「{fallback_row.title}」。"
                 )
-                result["plotlines"] = [
-                    {
-                        "id": fallback_row.id,
-                        "title": fallback_row.title,
-                        "summary": fallback_row.summary,
-                        "status": fallback_row.status,
-                        "start_chapter": fallback_row.start_chapter_index,
-                        "end_chapter": fallback_row.end_chapter_index,
-                        "expected_resolve_chapter": (fallback_row.memory_metadata or {}).get(
-                            "expected_resolve_chapter"
-                        ),
-                        "payoff": (fallback_row.memory_metadata or {}).get("payoff"),
-                    }
-                ]
+                fallback_item = {
+                    "id": fallback_row.id,
+                    "title": fallback_row.title,
+                    "summary": fallback_row.summary,
+                    "status": fallback_row.status,
+                    "start_chapter": fallback_row.start_chapter_index,
+                    "end_chapter": fallback_row.end_chapter_index,
+                    "expected_resolve_chapter": (fallback_row.memory_metadata or {}).get(
+                        "expected_resolve_chapter"
+                    ),
+                    "payoff": (fallback_row.memory_metadata or {}).get("payoff"),
+                }
+                # fallback 也带到期标记（code-review 4 项 #10：标题漂移恰是账本最
+                # 担心的静默失效场景，回退行此前呈现为「干净」条目）
+                due = _plotline_due_state(fallback_row, _latest_chapter_index(db, project_id))
+                if due is not None:
+                    if due.get("overdue"):
+                        fallback_item["overdue"] = True
+                        if "overdue_by" in due:
+                            fallback_item["overdue_by"] = due["overdue_by"]
+                        else:
+                            fallback_item["age_chapters"] = due["age_chapters"]
+                    else:
+                        fallback_item["due_soon"] = True
+                        fallback_item["resolves_in"] = due["resolves_in"]
+                result["plotlines"] = [fallback_item]
             else:
                 result["fallback"] = True
                 result["fallback_note"] = f"未找到标题匹配「{title}」的情节线，且无开放的备选情节线。"
@@ -322,7 +359,9 @@ def open_plotline_rows(db: Session, project_id: str, limit: int = 20) -> list[di
     """自省提示词用的开放伏笔清单（≤limit 条，按埋设章序）。
 
     供 introspect_and_record 拼 prompt：模型据此对已有伏笔做 close/postpone，
-    而不仅是发现新伏笔。overdue 标记（超预计回收章）辅助模型判断。
+    而不仅是发现新伏笔。overdue 判定复用 _plotline_due_state（与 query/快照
+    同规则——code-review 4 项 #4：此前缺 30 章无 expected 兜底，同一伏笔在
+    清单与快照给出矛盾信号）。
     """
     rows = (
         db.query(LongformMemory)
@@ -335,31 +374,39 @@ def open_plotline_rows(db: Session, project_id: str, limit: int = 20) -> list[di
         .limit(limit)
         .all()
     )
-    latest_row = (
-        db.query(ChapterContent.chapter_index)
-        .filter(ChapterContent.project_id == project_id)
-        .order_by(ChapterContent.chapter_index.desc())
-        .first()
-    )
-    latest_index = latest_row[0] if latest_row else 0
+    if not rows:
+        return []
+    latest_index = _latest_chapter_index(db, project_id)
     out: list[dict] = []
     for m in rows:
         expected = (m.memory_metadata or {}).get("expected_resolve_chapter")
         entry: dict = {
             "title": m.title,
             "start_chapter": m.start_chapter_index,
+            # start=NULL（open 未传 chapter_index）不渲染「埋于 ChNone」（code-review 4 项 #2）
+            "start_chapter_text": f"埋于 Ch{m.start_chapter_index}" if m.start_chapter_index is not None else "埋设章未知",
             "expected_resolve_chapter": expected if isinstance(expected, int) and expected >= 1 else None,
         }
-        if isinstance(expected, int) and expected >= 1 and latest_index > expected:
+        due = _plotline_due_state(m, latest_index)
+        if due is not None and due.get("overdue"):
             entry["overdue"] = True
         out.append(entry)
     return out
 
 
 def _expected_from(item: dict) -> int | None:
-    """校验自省输出的 expected_resolve_chapter（int ≥1；bool 是 int 子类，排除）。"""
+    """校验自省输出的 expected_resolve_chapter（≥1 的整数）。
+
+    bool 是 int 子类，排除；整值浮点（80.0）接受——与工具通道 pydantic lax
+    强转一致（code-review 4 项 #15：此前自省拒 80.0、工具落 80，两条通道
+    对同一意图给出矛盾到期行为）。
+    """
     v = item.get("expected_resolve_chapter")
-    if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    if not isinstance(v, int) or v < 1:
         return None
     return v
 
@@ -395,6 +442,11 @@ def plotline_apply_updates(
     动作记日志跳过，不炸自省流程。
     """
     applied = {"open": 0, "close": 0, "postpone": 0, "skipped": 0}
+    # 同批 open 去重（apply_experiences 的 seen_keys 先例，code-review 4 项 #1）：
+    # autoflush=False 下第二次 get_or_create 查不到本批 pending 行 → 双 INSERT
+    # 撞 uq_longform_memories_scope → IntegrityError 回滚整笔自省事务。
+    # 只拦重复 open：open 后同 title 的 postpone（reopen 后立即延期）是合法组合。
+    opened_titles: set[str] = set()
     for item in updates or []:
         action = str(item.get("action", "")).strip()
         title = str(item.get("title", "")).strip()
@@ -406,6 +458,17 @@ def plotline_apply_updates(
             applied["skipped"] += 1
             continue
         if action == "open":
+            if title in opened_titles:
+                logger.warning("plotline update skipped: 同批重复 open %r（第 2 次起忽略）", title[:30])
+                applied["skipped"] += 1
+                continue
+            opened_titles.add(title)
+            # 与 track_plotline 同校验（code-review 4 项 #11：此前自省路径放行
+            # 「第N章线」类标题，工具路径拒绝——同一条伏笔两条入口校验不一致）
+            if _CHAPTER_REF.search(title):
+                logger.warning("plotline open skipped: title 含章节序号 %r", title[:30])
+                applied["skipped"] += 1
+                continue
             expected = _expected_from(item)
             mem = get_or_create_longform_memory(
                 db, project_id, "plotline", title,
@@ -427,8 +490,15 @@ def plotline_apply_updates(
             # 已有：reopen（闭环后重开）或补 expected / summary
             if mem.status != "open":
                 mem.status = "open"
-                mem.start_chapter_index = chapter_index
+                # 保留首次埋设章（code-review 4 项 #12：重置后 30 章规则重新计时
+                # 永不触发，与工具路径保留旧值分裂）
                 mem.end_chapter_index = None
+                meta = dict(mem.memory_metadata or {})
+                # 清旧计划与回收记录（code-review 4 项 #3：残留 expected 让刚重开
+                # 的线立即误判超期；残留 payoff 让模型误以为悬念已解）
+                meta.pop("expected_resolve_chapter", None)
+                meta.pop("payoff", None)
+                mem.memory_metadata = meta
             summary = str(item.get("summary", "")).strip()
             if summary:
                 mem.summary = summary[:_PLOTLINE_SUMMARY_MAX]
@@ -763,13 +833,7 @@ def plan_arc(
                 "长卷易出现开线不收束，建议补设回收清单。"
             )
         if endgame:
-            latest_row = (
-                db.query(ChapterContent.chapter_index)
-                .filter(ChapterContent.project_id == project_id)
-                .order_by(ChapterContent.chapter_index.desc())
-                .first()
-            )
-            latest_index = latest_row[0] if latest_row else 0
+            latest_index = _latest_chapter_index(db, project_id)
             resolve_before = int(endgame.get("resolve_before") or 0)
             remaining_to_end = max(0, resolve_before - latest_index)
             must_open = _open_plotlines_containing(db, project_id, endgame.get("must_resolve") or [])

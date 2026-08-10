@@ -6,8 +6,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.models import ChapterContent, LongformMemory, Project
-from domain.memory.memory_service import plotline_apply_updates, query_memory, track_plotline
+from domain.memory.memory_service import plotline_apply_updates, plotline_due_items, query_memory, track_plotline
 
 
 def _seed(db, project_id: str, memory_type: str, count: int, title_prefix: str) -> None:
@@ -386,3 +388,165 @@ def test_plotline_query_due_marks(db_session):
     assert all("expected_resolve_chapter" in p and "payoff" in p for p in result["plotlines"])
     assert by_title["无计划超期线"]["expected_resolve_chapter"] is None
     assert by_title["超期线"]["expected_resolve_chapter"] == 50
+
+
+# ── code-review 4 项修复回归 ──
+
+
+def test_plotline_apply_updates_duplicate_open_same_batch(db_session):
+    """#1 同批重复 open → 第二次 skipped（防双 INSERT 撞唯一约束回滚整笔事务）。"""
+    project = _make_project(db_session)
+    applied = plotline_apply_updates(
+        db_session, project.id, 1,
+        [
+            {"action": "open", "title": "玉佩来历", "summary": "A"},
+            {"action": "open", "title": "玉佩来历", "summary": "B"},
+            {"action": "open", "title": "玉佩来历", "summary": "C"},
+        ],
+    )
+    assert applied["open"] == 1 and applied["skipped"] == 2
+    assert db_session.query(LongformMemory).filter(
+        LongformMemory.project_id == project.id,
+        LongformMemory.memory_type == "plotline",
+    ).count() == 1
+    # open 后同批 postpone 合法（reopen 后立即延期，不被去重误伤）
+    applied2 = plotline_apply_updates(
+        db_session, project.id, 2,
+        [
+            {"action": "postpone", "title": "玉佩来历", "expected_resolve_chapter": 50},
+            {"action": "postpone", "title": "玉佩来历", "expected_resolve_chapter": 60},
+        ],
+    )
+    assert applied2["postpone"] == 2  # postpone 不受 open 去重限制
+
+
+def test_plotline_due_with_null_start_and_expected(db_session):
+    """#2 start=NULL 的开放伏笔：expected 分支仍生效（超期判定不依赖埋设章）。"""
+    project = _make_project(db_session)
+    for i in range(1, 81):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i, title=f"Ch{i}",
+            content="正文", status="generated",
+        ))
+    # 直接落库 start=NULL + expected=50（模拟 track_plotline open 未传 chapter_index）
+    db_session.add(LongformMemory(
+        project_id=project.id, memory_type="plotline", scope_key="无埋设章线",
+        title="无埋设章线", summary="", start_chapter_index=None, status="open",
+        memory_metadata={"expected_resolve_chapter": 50},
+    ))
+    db_session.commit()
+
+    total, items = plotline_due_items(db_session, project.id)
+    assert total == 1
+    assert items and items[0]["title"] == "无埋设章线" and items[0]["overdue"] is True
+    assert items[0]["overdue_by"] == 30  # 80 - 50
+
+
+def test_plotline_reopen_clears_stale_meta(db_session):
+    """#3/#12 reopen：清旧 expected/payoff、保留首次埋设章（不重新计时）。"""
+    project = _make_project(db_session)
+    # 埋设 Ch1 expected=50 → close Ch55（payoff）→ reopen Ch80
+    track_plotline(db_session, project.id, "open", title="黑市线", chapter_index=1, expected_resolve_chapter=50)
+    track_plotline(db_session, project.id, "close", title="黑市线", chapter_index=55, payoff="真凶落网")
+    plotline_apply_updates(
+        db_session, project.id, 80,
+        [{"action": "open", "title": "黑市线", "summary": "余党反扑"}],
+    )
+    m = _plotline(db_session, project.id, "黑市线")
+    assert m.status == "open"
+    assert m.start_chapter_index == 1  # 保留首次埋设章
+    meta = m.memory_metadata or {}
+    assert "expected_resolve_chapter" not in meta  # 旧计划清除
+    assert "payoff" not in meta  # 旧回收记录清除
+    assert meta.get("source") == "track_plotline"  # 原来源保留
+
+
+def test_plotline_postpone_action(db_session):
+    """#9 track_plotline 支持 postpone 动作（stale_warning 文案可执行）。"""
+    project = _make_project(db_session)
+    track_plotline(db_session, project.id, "open", title="玉佩来历", chapter_index=1, expected_resolve_chapter=50)
+    result = track_plotline(db_session, project.id, "postpone", title="玉佩来历", expected_resolve_chapter=120)
+    assert result["action"] == "postponed"
+    assert result["expected_resolve_chapter"] == 120
+    m = _plotline(db_session, project.id, "玉佩来历")
+    assert (m.memory_metadata or {})["expected_resolve_chapter"] == 120
+    # 缺 expected → 报错
+    from domain.memory.memory_service import MemoryServiceError
+
+    with pytest.raises(MemoryServiceError) as exc_info:
+        track_plotline(db_session, project.id, "postpone", title="玉佩来历")
+    assert "expected_resolve_chapter" in str(exc_info.value)
+
+
+def test_plotline_query_fallback_with_due_mark(db_session):
+    """#10 标题漂移 fallback 分支：回退行带到期标记（不再呈现「干净」条目）。"""
+    project = _make_project(db_session)
+    for i in range(1, 61):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i, title=f"Ch{i}",
+            content="正文", status="generated",
+        ))
+    track_plotline(db_session, project.id, "open", title="玉佩来历", chapter_index=1, expected_resolve_chapter=50)
+    db_session.commit()
+
+    result = track_plotline(db_session, project.id, "query", title="玉佩的来历")
+    assert result["fallback"] is True
+    assert result["plotlines"][0]["title"] == "玉佩来历"
+    assert result["plotlines"][0]["overdue"] is True
+    assert result["plotlines"][0]["overdue_by"] == 10
+
+
+def test_plotline_expected_float_accepted(db_session):
+    """#15 自省通道接受整值浮点 expected（80.0 → 80，与工具通道 lax 强转一致）。"""
+    project = _make_project(db_session)
+    applied = plotline_apply_updates(
+        db_session, project.id, 1,
+        [{"action": "open", "title": "浮点线", "expected_resolve_chapter": 80.0}],
+    )
+    assert applied["open"] == 1
+    m = _plotline(db_session, project.id, "浮点线")
+    assert (m.memory_metadata or {})["expected_resolve_chapter"] == 80
+
+
+def test_plotline_open_chapter_ref_rejected(db_session):
+    """#11 自省 open 拒绝含章节序号标题（与 track_plotline 校验一致）。"""
+    project = _make_project(db_session)
+    applied = plotline_apply_updates(
+        db_session, project.id, 1,
+        [{"action": "open", "title": "第50章黑市线", "summary": "x"}],
+    )
+    assert applied["open"] == 0 and applied["skipped"] == 1
+    assert db_session.query(LongformMemory).filter(
+        LongformMemory.project_id == project.id,
+        LongformMemory.memory_type == "plotline",
+    ).count() == 0
+
+
+def test_plotline_tool_args_reject_bool_expected():
+    """#5 pydantic lax 模式会把 JSON 布尔 true 强转为 1：StrictInt 拒绝，
+    防落库 expected=1 自第 2 章起永久误报超期。"""
+    from pydantic import ValidationError
+
+    from domain.tools.memory_tools import TrackPlotlineArgs
+
+    args = TrackPlotlineArgs(action="open", title="门主失踪之谜", expected_resolve_chapter=80)
+    assert args.expected_resolve_chapter == 80
+    with pytest.raises(ValidationError):
+        TrackPlotlineArgs(action="open", title="门主失踪之谜", expected_resolve_chapter=True)
+
+
+def test_open_plotline_rows_null_start_text(db_session):
+    """#2 自省清单渲染：start=NULL 不出现「埋于 ChNone」。"""
+    from domain.memory.memory_service import open_plotline_rows
+
+    project = _make_project(db_session)
+    db_session.add(LongformMemory(
+        project_id=project.id, memory_type="plotline", scope_key="无埋设章线",
+        title="无埋设章线", summary="", start_chapter_index=None, status="open",
+        memory_metadata={"expected_resolve_chapter": 50},
+    ))
+    db_session.commit()
+    rows = open_plotline_rows(db_session, project.id)
+    assert len(rows) == 1
+    assert rows[0]["start_chapter_text"] == "埋设章未知"
+    assert "ChNone" not in rows[0]["start_chapter_text"]

@@ -5,19 +5,25 @@
 """
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from core.tools.base import ToolContext, ToolRegistry, ToolResult, tool
 from domain.memory.memory_service import MemoryServiceError, memory_tree, plan_arc, query_memory, track_plotline
 
 
 class TrackPlotlineArgs(BaseModel):
-    action: str = Field(..., pattern="^(open|close|query)$", description="open=创建/close=闭环/query=查询")
+    action: str = Field(
+        ...,
+        pattern="^(open|close|postpone|query)$",
+        description="open=创建/postpone=显式延期/close=闭环/query=查询",
+    )
     title: str = Field(default="", max_length=100, description="情节线标题")
     summary: str = Field(default="", max_length=500, description="情节线描述")
     chapter_index: int = Field(default=0, ge=0, description="当前章节序号")
-    expected_resolve_chapter: int = Field(
-        default=0, ge=0, description="预计回收章（open 可选；账本据此判定临期/超期）"
+    # StrictInt：pydantic lax 模式会把 JSON 布尔 true 静默强转为 1（code-review 4 项 #5）——
+    # 落库 expected=1 会自第 2 章起永久误报超期，无迁移路径
+    expected_resolve_chapter: StrictInt = Field(
+        default=0, ge=0, description="预计回收章（open/postpone 用；账本据此判定临期/超期）"
     )
     payoff: str = Field(default="", max_length=200, description="回收摘要（close 可选，如何回收的）")
 
@@ -63,9 +69,10 @@ def register_memory_tools(registry: ToolRegistry) -> None:
         description=(
             "登记、查询或闭环一条情节线/伏笔。操作类型决定行为："
             "open=创建新情节线（可带 expected_resolve_chapter 预计回收章），"
+            "postpone=显式延期（必须带新的 expected_resolve_chapter），"
             "close=闭环（可带 payoff 回收摘要），query=查询（返回超期/临期两级标记）。"
-            "伏笔账本：开放超过预计回收章或 30 章未收的伏笔会被标记超期，"
-            "届时应优先回收或显式延期（postpone 暂不支持，需后续开放）。"
+            "伏笔账本：超过预计回收章会被标记超期；无预计回收章的伏笔 30 章未收"
+            "也会被标记超期，届时应优先回收或显式延期。"
         ),
         args_model=TrackPlotlineArgs,
         permission="write",
