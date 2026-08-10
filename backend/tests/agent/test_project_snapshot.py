@@ -142,3 +142,40 @@ def test_snapshot_plotline_no_false_due(db_session, project):
     assert snapshot is not None
     assert "1 条开放伏笔" in snapshot
     assert "到期伏笔" not in snapshot
+
+
+# ── 质量趋势段（P1① 恢复，2026-08-10）──
+
+
+def test_snapshot_quality_trend_section(db_session, project):
+    """非 stable 注入（信息形态，无指令文案）；stable 不注入。"""
+    for i in range(1, 11):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i, title=f"Ch{i}",
+            content="正文。" * 50, word_count=3000 if i <= 5 else 1000,
+            status="generated",
+        ))
+    db_session.commit()
+
+    snapshot = build_project_snapshot(db_session, project.id)
+    assert snapshot is not None
+    assert "质量趋势" in snapshot
+    assert "降" in snapshot and "%" in snapshot
+    # 信息形态：无「请立即」「必须」等指令（工具不越权原则）
+    assert "请立即" not in snapshot and "必须" not in snapshot
+    # 单段 ≤约 40 字（code-review 5 项 #6）
+    trend_line = next(p for p in snapshot.split("；") if "质量趋势" in p)
+    assert len(trend_line) <= 45
+
+
+def test_snapshot_quality_trend_stable_not_injected(db_session, project):
+    """stable 不注入（避免每回合噪声）。"""
+    for i in range(1, 6):
+        db_session.add(ChapterContent(
+            project_id=project.id, chapter_index=i, title=f"Ch{i}",
+            content="正文。" * 50, word_count=2000, status="generated",
+        ))
+    db_session.commit()
+    snapshot = build_project_snapshot(db_session, project.id)
+    assert snapshot is not None
+    assert "质量趋势" not in snapshot

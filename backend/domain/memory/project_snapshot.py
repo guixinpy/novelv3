@@ -33,12 +33,13 @@ def _due_item_text(item: dict) -> str:
     return f"「{title}」(Ch{item['expected']}收)"
 
 
-# 质量趋势快照文案（信息形态 ≤约 40 字：数字 + 可能原因供参考，无指令）
+# 质量趋势快照文案（信息形态 ≤约 40 字：数字 + 可能原因首条供参考，无指令。
+# code-review 5 项 #6：全量 causes 拼接曾达 60 字，超快照单段预算 50%）
 def _trend_text(trend: dict) -> str:
     ratio = trend["ratio"]
     change = f"降{round((1 - ratio) * 100)}%" if ratio < 1 else f"增{round((ratio - 1) * 100)}%"
-    causes = "、".join(trend["possible_causes"]) if trend["possible_causes"] else ""
-    cause_suffix = f"，可能: {causes}" if causes else ""
+    cause = trend["possible_causes"][0] if trend["possible_causes"] else ""
+    cause_suffix = f"，可能: {cause}" if cause else ""
     return f"质量趋势: 近{trend['window']}章字数 {trend['first_avg']}→{trend['second_avg']}（{change}{cause_suffix}）"
 
 _FACT_SHEET_FORMAT_RULES = "格式规范：对话用全角引号“”；正文不得含 markdown 标记（**）、备选词（X/Y）、章题重复行。"
@@ -80,10 +81,12 @@ def build_project_snapshot(
         )
         parts.append(f"最近章节: {recent_desc}")
 
-    # 质量趋势（P1① 恢复）：非 stable 才注入，≤约 40 字，信息形态（无指令文案）
-    trend = quality_trend_stats(db, project_id)
-    if trend is not None and trend["trend"] != "stable":
-        parts.append(_trend_text(trend))
+    # 质量趋势（P1① 恢复）：非 stable 才注入，≤约 40 字，信息形态（无指令文案）。
+    # 守卫 total>=3（code-review 5 项 #15：0-2 章项目每回合白付一次必然为空的查询）
+    if total >= 3:
+        trend = quality_trend_stats(db, project_id)
+        if trend is not None and trend["trend"] != "stable":
+            parts.append(_trend_text(trend))
 
     # 活跃弧线 + 终局
     active_arc = (
