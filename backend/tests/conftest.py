@@ -1,6 +1,10 @@
 import os
 import tempfile
 
+# 必须在 import app.main 之前设置（code-review #5：TestClient 跑 lifespan 曾对
+# 真实 data/mozhou.db 执行 create_all DDL）
+os.environ.setdefault("NOVELV3_SKIP_CREATE_ALL", "1")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

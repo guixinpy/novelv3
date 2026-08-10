@@ -63,6 +63,14 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _ts_sort_key(ts) -> datetime:
+    """排序用时间键（code-review #2：naive/aware datetime 混比 TypeError——
+    commit=False 事务内 identity map 是 aware 值、SQLite 回读是 naive 值）。"""
+    if ts is None:
+        return _now().replace(tzinfo=None)
+    return ts.replace(tzinfo=None) if ts.tzinfo else ts
+
+
 def _candidate_keys(db: Session, project_id: str, category: str, limit: int = _KEY_CANDIDATE_COUNT) -> list[str]:
     """该类目最近强化的经验键（自省提示词携带，防 key 漂移导致 override 永不生效）。"""
     rows = (
@@ -117,6 +125,7 @@ def apply_experiences(
     # 惰性衰减（评审护栏：30 章未强化 → -1；≤0 → archived；pinned 豁免）
     _decay_stale(db, project_id, category, chapter_index)
 
+    seen_keys: set[str] = set()
     for item in items:
         key = str(item.get("key", "")).strip()
         action = str(item.get("action", "new")).strip()
@@ -124,6 +133,12 @@ def apply_experiences(
         if not key or not text:
             applied["skipped"] += 1
             continue
+        # 同 batch 重复 key 跳过（code-review #3：autoflush=False 下逐条查询
+        # 看不到本批已 add 的行，双插撞唯一约束 IntegrityError）
+        if key in seen_keys:
+            applied["skipped"] += 1
+            continue
+        seen_keys.add(key)
         entry = (
             db.query(LongformMemory)
             .filter(
@@ -156,27 +171,45 @@ def apply_experiences(
             applied["new"] += 1
             continue
         meta = dict(entry.memory_metadata or {})
+        # 跨类目 key 冲突：账本独立，跳过（code-review #10——否则信任度在
+        # 错误的类目账本下增减、衰减锚点被跨类目强化重置）
+        if meta.get("category") != category:
+            applied["skipped"] += 1
+            continue
         trust = int(meta.get("trust_score", _TRUST_INITIAL))
         if action == "override":
-            # 推翻：旧经验降权，新文本覆盖
+            # 推翻：旧经验降权，新文本覆盖；trust≤0 → 归档（≤0 不再注入不变量）
             entry.summary = text
             entry.title = f"[{category}] {key}"
             meta["trust_score"] = max(0, trust - 1)
             meta["last_reinforce_chapter_index"] = chapter_index
             applied["override"] += 1
-        else:  # reinforce（含 new 落到已存在键的情况）
+            if meta["trust_score"] <= 0:
+                entry.status = _ARCHIVED
+            elif entry.status == _ARCHIVED:
+                entry.status = _ACTIVE
+        else:
+            # 归档条目被 action=new 偶然碰撞（预算淘汰/衰减后同 key 复现）——
+            # 不复活（code-review #9：候选键不含归档键，属 LLM 键碰撞）
+            if entry.status == _ARCHIVED and action == "new":
+                applied["skipped"] += 1
+                continue
             meta["trust_score"] = min(trust + 1, 99)
             entry.summary = text
             meta["last_reinforce_chapter_index"] = chapter_index
             applied["reinforce"] += 1
-        # 归档复活（code-review #5）：被衰减归档的经验再次强化时恢复注入
-        if entry.status == _ARCHIVED:
-            entry.status = _ACTIVE
+            # 归档复活（code-review #5）：被衰减归档的经验再次强化时恢复注入
+            if entry.status == _ARCHIVED:
+                entry.status = _ACTIVE
         entry.memory_metadata = meta
         entry.updated_at = _now()
 
     if commit:
         db.commit()
+    else:
+        # commit=False 时仍 flush（code-review #2：预算淘汰的查询需要看到
+        # 本批 pending 新增行，autoflush=False 下否则看不到）
+        db.flush()
 
     # 预算淘汰（每类上限，按信任度淘汰最低，archived 不删除）
     _enforce_budget(db, project_id, category, commit=commit)
@@ -233,7 +266,10 @@ def _enforce_budget(db: Session, project_id: str, category: str, *, commit: bool
         return
     candidates = sorted(
         [r for r in rows if not (r.memory_metadata or {}).get("pinned")],
-        key=lambda r: (int((r.memory_metadata or {}).get("trust_score", 0)), r.updated_at or _now()),
+        key=lambda r: (
+            int((r.memory_metadata or {}).get("trust_score", 0)),
+            _ts_sort_key(r.updated_at),
+        ),
     )
     overflow = len(rows) - _MAX_PER_CATEGORY
     for entry in candidates[:overflow]:
@@ -397,7 +433,11 @@ def delete_experience(db: Session, project_id: str, key: str) -> dict:
 
 
 def pin_experience(db: Session, project_id: str, key: str, pinned: bool) -> dict:
-    """作者钉住/解除：pinned 经验不衰减、不淘汰。"""
+    """作者钉住/解除：pinned 经验不衰减、不淘汰。
+
+    钉住已归档条目 = 复活 + 保护（code-review #11：此前钉住 archived 静默 no-op，
+    注入按 status==_ACTIVE 过滤导致钉住无任何可见效果）。
+    """
     entry = (
         db.query(LongformMemory)
         .filter(
@@ -411,6 +451,8 @@ def pin_experience(db: Session, project_id: str, key: str, pinned: bool) -> dict
         raise WritingExperienceError(f"未找到写作经验「{key}」")
     meta = dict(entry.memory_metadata or {})
     meta["pinned"] = bool(pinned)
+    if pinned and entry.status == _ARCHIVED:
+        entry.status = _ACTIVE
     entry.memory_metadata = meta
     entry.updated_at = _now()
     db.commit()

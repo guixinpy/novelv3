@@ -307,8 +307,12 @@ class AgentHarness:
             max_wall_clock_ms=self.config.max_wall_clock_ms,
             compacted=compacted_this_turn,
         )
-        # 持久化新消息（sidecar：剥离 api_content 等发送专用字段）
-        self.transcript.append_messages([strip_api_fields(m) for m in result.messages[before_count:]])
+        # 持久化新消息（sidecar：剥离 api_content 等发送专用字段；ephemeral 消息
+        # 整条不落盘——code-review #8：nudge 等临时注入曾成为 transcript 永久消息
+        # 并在后续所有回合重放）
+        self.transcript.append_messages(
+            [strip_api_fields(m) for m in result.messages[before_count:] if not m.get("ephemeral")]
+        )
 
         # 风险→恢复：guard 触发或工具错误 → 注入诊断+恢复建议（每回合 ≤1 条）
         exit_detail = result.exit_detail

@@ -130,8 +130,13 @@ async def run_turn(
 
         response: ProviderResponse | None = None
         try:
+            # 发送副本剥离 ephemeral 键（code-review #12：内部标记不发给 API，
+            # 未知消息字段有 400 风险；ephemeral 仅用于 harness 持久化过滤）
+            send_history = [
+                {k: v for k, v in m.items() if k != "ephemeral"} for m in history
+            ]
             async for event in provider.stream(
-                history, tools=registry.to_specs(), **(extra_provider_kwargs or {})
+                send_history, tools=registry.to_specs(), **(extra_provider_kwargs or {})
             ):
                 if isinstance(event, TextDelta):
                     await emit(AssistantDelta(text=event.text))

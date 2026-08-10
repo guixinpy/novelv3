@@ -150,3 +150,18 @@ async def test_concurrent_send_serialized(tmp_path):
     transcript = Transcript(tmp_path / "s1.jsonl")
     roles = [m.get("role") for m in transcript.messages]
     assert roles.count("user") == 2
+
+
+async def test_empty_response_nudge_not_persisted(tmp_path):
+    """code-review #8（二轮）：空响应 nudge 是临时注入——不落盘、不重放。"""
+    harness = make_harness(
+        tmp_path,
+        [{"content": ""}, {"content": "这次写完了"}],
+    )
+    await drain(harness, "写第一章")
+    transcript = Transcript(tmp_path / "s1.jsonl")
+    # transcript 中无 nudge 内容（nudge 不持久化，后续回合不会重放成悬空指令）
+    assert not any("回复为空" in str(m.get("content", "")) for m in transcript.messages)
+    # 用户消息与最终回复正常落盘
+    assert any(m.get("role") == "user" and m.get("content") == "写第一章" for m in transcript.messages)
+    assert any(m.get("role") == "assistant" and m.get("content") == "这次写完了" for m in transcript.messages)

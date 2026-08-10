@@ -204,6 +204,115 @@ def test_budget_evicts_lowest_trust(db_session):
     assert len(_entries(db_session, project.id)) == 21  # 淘汰只是归档
 
 
+def test_batch_duplicate_key_skipped(db_session):
+    """code-review #3：同 batch 重复 key 跳过（autoflush=False 下逐条查询
+    看不到本批已 add 的行，双插会撞唯一约束）。"""
+    project = _make_project(db_session)
+    applied = apply_experiences(
+        db_session, project.id, 1, "节奏",
+        [
+            {"key": "战斗场景长度", "action": "new", "text": "首次记录。"},
+            {"key": "战斗场景长度", "action": "reinforce", "text": "同批重复。"},
+        ],
+    )
+    assert applied["new"] == 1
+    assert applied["skipped"] == 1
+    assert len(_entries(db_session, project.id)) == 1
+
+
+def test_override_to_zero_archives(db_session):
+    """code-review #9：override 把 trust 降到 0 → 归档（≤0 不再注入不变量）。"""
+    project = _make_project(db_session)
+    apply_experiences(
+        db_session, project.id, 1, "文风",
+        [{"key": "对话占比", "action": "new", "text": "对话应精简。"}],
+    )
+    apply_experiences(
+        db_session, project.id, 2, "文风",
+        [{"key": "对话占比", "action": "override", "text": "发现对话精简不适用，推翻。"}],
+    )
+    entry = _by_key(db_session, project.id)["对话占比"]
+    assert entry.status == "archived"
+    assert (entry.memory_metadata or {})["trust_score"] == 0
+
+
+def test_new_collision_does_not_revive_archived(db_session):
+    """code-review #9：预算淘汰/衰减归档的条目被 action=new 偶然碰撞 → 不复活。"""
+    project = _make_project(db_session)
+    apply_experiences(
+        db_session, project.id, 1, "节奏",
+        [{"key": "开篇节奏", "action": "new", "text": "开篇冲突前置。"}],
+    )
+    apply_experiences(
+        db_session, project.id, 31, "节奏",
+        [{"key": "新经验", "action": "new", "text": "新内容。"}],
+    )
+    assert _by_key(db_session, project.id)["开篇节奏"].status == "archived"
+    # 同 key new 碰撞 → skipped，不复活
+    applied = apply_experiences(
+        db_session, project.id, 32, "节奏",
+        [{"key": "开篇节奏", "action": "new", "text": "偶然碰撞。"}],
+    )
+    assert applied["skipped"] == 1
+    assert _by_key(db_session, project.id)["开篇节奏"].status == "archived"
+
+
+def test_cross_category_key_skipped(db_session):
+    """code-review #10：跨类目 key 复用 → 跳过（账本独立，不污染类目信任度）。"""
+    project = _make_project(db_session)
+    apply_experiences(
+        db_session, project.id, 1, "文风",
+        [{"key": "对话占比", "action": "new", "text": "对话应精简。"}],
+    )
+    applied = apply_experiences(
+        db_session, project.id, 2, "节奏",
+        [{"key": "对话占比", "action": "reinforce", "text": "跨类目强化。"}],
+    )
+    assert applied["skipped"] == 1
+    entry = _by_key(db_session, project.id)["对话占比"]
+    assert (entry.memory_metadata or {})["trust_score"] == 1  # 未在错误账本下 +1
+    assert (entry.memory_metadata or {})["category"] == "文风"
+
+
+def test_pin_revives_archived(db_session):
+    """code-review #11：钉住已归档条目 = 复活 + 保护（此前钉住 archived 静默 no-op）。"""
+    project = _make_project(db_session)
+    apply_experiences(
+        db_session, project.id, 1, "教训",
+        [{"key": "钩子收尾", "action": "new", "text": "章末留钩子。"}],
+    )
+    apply_experiences(
+        db_session, project.id, 31, "教训",
+        [{"key": "新教训", "action": "new", "text": "新内容。"}],
+    )
+    assert _by_key(db_session, project.id)["钩子收尾"].status == "archived"
+    pin_experience(db_session, project.id, "钩子收尾", pinned=True)
+    entry = _by_key(db_session, project.id)["钩子收尾"]
+    assert entry.status == "current"  # 复活
+    assert (entry.memory_metadata or {})["pinned"] is True
+    # 复活后进入注入池
+    items = experience_injection_items(db_session, project.id)
+    assert any("钩子" in i["text"] for i in items)
+
+
+def test_enforce_budget_mixed_tz_no_typeerror(db_session):
+    """code-review #2：commit=False 事务内 aware（identity map）/naive（SQLite 回读）
+    datetime 混比排序不抛 TypeError。"""
+    project = _make_project(db_session)
+    items = [{"key": f"经验{i}", "action": "new", "text": f"内容{i}。"} for i in range(20)]
+    apply_experiences(db_session, project.id, 1, "节奏", items)
+    # 批量：1 条 reinforce（触碰 → identity map aware 值）+ 5 条 new → 超预算触发淘汰排序
+    batch = [{"key": "经验0", "action": "reinforce", "text": "强化。"}]
+    batch += [{"key": f"新{i}", "action": "new", "text": f"新内容{i}。"} for i in range(5)]
+    result = apply_experiences(db_session, project.id, 2, "节奏", batch, commit=False)
+    db_session.commit()
+    assert result["reinforce"] >= 1
+    assert result["new"] == 5
+    # 预算淘汰已执行（26 条 active → 20）
+    active = [e for e in _entries(db_session, project.id) if e.status == "current"]
+    assert len(active) == 20
+
+
 # ── 注入条目 ──
 
 

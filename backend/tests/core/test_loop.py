@@ -219,6 +219,8 @@ async def test_empty_response_nudged_then_completed(scripted_provider_factory):
     assert any(m.get("role") == "user" and "回复为空" in m.get("content", "") for m in second)
     assert not any(isinstance(e, AssistantMessage) and "回复为空" in e.content for e in events)
     assert result.partial_response == "这次写完了"
+    # code-review #12：ephemeral 内部标记键不发给 API（未知消息字段 400 风险）
+    assert not any("ephemeral" in m for m in second)
 
 
 def test_strip_api_fields_removes_ephemeral():

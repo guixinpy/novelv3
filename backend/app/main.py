@@ -18,8 +18,11 @@ from app.db import Base, engine
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # 建表（幂等：仅建缺失表；项目无 alembic，新模型在此登记——code-review P0-1：
-    # entity_relations 等新表曾无任何建表路径，生产库缺表会在首次调用时击穿回合）
-    Base.metadata.create_all(bind=engine)
+    # entity_relations 等新表曾无任何建表路径，生产库缺表会在首次调用时击穿回合）。
+    # 测试进程跳过（tests/conftest.py 设 NOVELV3_SKIP_CREATE_ALL——code-review #5：
+    # TestClient 跑 lifespan 曾对真实 data/mozhou.db 执行 DDL）
+    if os.environ.get("NOVELV3_SKIP_CREATE_ALL") != "1":
+        Base.metadata.create_all(bind=engine)
     yield
 
 

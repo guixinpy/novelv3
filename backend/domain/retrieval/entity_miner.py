@@ -9,6 +9,7 @@ import re
 from itertools import combinations
 
 from sqlalchemy import and_, or_, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import EntityCandidate, EntityRelation
@@ -155,7 +156,11 @@ def register_entity_candidates(
             entry.last_chapter = chapter_index
             if entry.first_chapter is None:
                 entry.first_chapter = chapter_index
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 并发写同实体：后提交者撞唯一约束（code-review #14）——回滚不炸回合
+        db.rollback()
     return added
 
 
@@ -217,7 +222,11 @@ def record_entity_cooccurrences(
             if entry.last_chapter != chapter_index:
                 entry.count = (entry.count or 1) + 1
             entry.last_chapter = chapter_index
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 并发写同对共现：后提交者撞唯一约束（code-review #14）——回滚不炸回合
+        db.rollback()
     return added
 
 

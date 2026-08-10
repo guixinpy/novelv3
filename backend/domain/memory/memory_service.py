@@ -29,6 +29,13 @@ def _channel_limit(memory_type: str) -> int:
     return _CHANNEL_LIMITS.get(memory_type, _DEFAULT_CHANNEL_LIMIT)
 
 
+def _channel_limits_desc() -> str:
+    """guideline 提示语从常量动态生成（code-review #15：消除配额数字三处拷贝的漂移）。"""
+    parts = [f"{k} ≤{v}条" for k, v in _CHANNEL_LIMITS.items()]
+    parts.append(f"实体/杂项 ≤{_DEFAULT_CHANNEL_LIMIT}条")
+    return " + ".join(parts)
+
+
 def _cap_by_channel(memories: list, global_limit: int) -> list:
     """按通道配额截断（保持输入排序：更新时间倒序 + author_explicit 优先）。"""
     counts: dict[str, int] = {}
@@ -225,9 +232,12 @@ def query_memory(
 ) -> dict:
     effective_limit = min(limit, 10)
     query = db.query(LongformMemory).filter(LongformMemory.project_id == project_id)
-    # 内部日志类型不进记忆查询（code-review #4：introspect_log 空行曾泄漏
-    # 进默认混合查询并挤占真实记忆通道配额）
-    query = query.filter(LongformMemory.memory_type != "introspect_log")
+    # 内部日志类型与归档条目不进记忆查询（code-review #4/#6：introspect_log 空行
+    # 曾挤占通道配额；archived 经验按 09 定稿「不再注入」，与快照路径语义一致）
+    query = query.filter(
+        LongformMemory.memory_type != "introspect_log",
+        LongformMemory.status != "archived",
+    )
     if memory_type != "all":
         query = query.filter(LongformMemory.memory_type == memory_type)
     if provenance != "all":
@@ -239,11 +249,31 @@ def query_memory(
             | (LongformMemory.title.like(like))
             | (LongformMemory.summary.like(like))
         )
-    memories = (
-        query.order_by(LongformMemory.updated_at.desc())
-        .limit(effective_limit * 3)
-        .all()
-    )
+    if memory_type == "all":
+        # 每通道独立预取（code-review #7：全局预取窗口下低频通道可能零代表，
+        # 单通道 flood 时其他通道在窗口内一条不剩）
+        type_rows = (
+            db.query(LongformMemory.memory_type)
+            .filter(LongformMemory.project_id == project_id)
+            .distinct()
+            .all()
+        )
+        memories: list = []
+        for (t,) in type_rows:
+            if t == "introspect_log":
+                continue
+            memories.extend(
+                query.filter(LongformMemory.memory_type == t)
+                .order_by(LongformMemory.updated_at.desc())
+                .limit(_channel_limit(t) * 2)
+                .all()
+            )
+    else:
+        memories = (
+            query.order_by(LongformMemory.updated_at.desc())
+            .limit(effective_limit * 3)
+            .all()
+        )
     memories.sort(
         key=lambda m: (0 if (m.memory_metadata or {}).get("provenance") == "author_explicit" else 1)
     )
@@ -274,7 +304,7 @@ def query_memory(
             "channel_limits": dict(_CHANNEL_LIMITS) if memory_type == "all" else None,
             "guideline": (
                 "上下文注入配额已由服务端强制（混合查询时每通道硬上限: "
-                "arc_summary ≤3条 + plotline ≤5条 + 实体/杂项 ≤3条；"
+                f"{_channel_limits_desc()}；"
                 "单类型查询按 limit 返回，请自行筛选最相关条目）。"
                 "author_explicit 条目可信度更高，agent_inferred 条目需交叉验证。"
             ),

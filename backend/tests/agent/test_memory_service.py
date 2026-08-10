@@ -73,6 +73,56 @@ def test_single_type_query_unaffected_by_channel_limit(db_session):
     assert result["injection_limit"]["channel_limits"] is None
 
 
+def test_mixed_query_low_frequency_channel_has_quota(db_session):
+    """code-review #7：每通道独立预取——高频通道 flood 时低频通道仍有配额代表。"""
+    project = Project(name="测试项目5")
+    db_session.add(project)
+    db_session.commit()
+    _seed(db_session, project.id, "plotline", 15, "伏笔")
+    _seed(db_session, project.id, "arc_summary", 2, "弧线")
+
+    result = query_memory(db_session, project.id, memory_type="all", limit=10)
+    memories = result["memories"]
+    by_type: dict[str, int] = {}
+    for m in memories:
+        by_type[m["type"]] = by_type.get(m["type"], 0) + 1
+    # 低频通道（arc_summary）在 15 条 plotline flood 下仍有代表（≤3 配额内）
+    assert by_type.get("arc_summary", 0) >= 1
+    assert by_type.get("plotline", 0) <= 5
+
+
+def test_archived_experience_filtered_from_query(db_session):
+    """code-review #6：archived 经验不进记忆查询（与快照注入语义一致）。"""
+    from app.models import LongformMemory
+
+    project = Project(name="测试项目6")
+    db_session.add(project)
+    db_session.commit()
+    db_session.add(LongformMemory(
+        project_id=project.id,
+        memory_type="writing_experience",
+        scope_key="已归档经验",
+        title="[节奏] 已归档经验",
+        summary="旧指导文本。",
+        status="archived",
+        memory_metadata={"category": "节奏", "trust_score": 0},
+    ))
+    db_session.add(LongformMemory(
+        project_id=project.id,
+        memory_type="writing_experience",
+        scope_key="活跃经验",
+        title="[节奏] 活跃经验",
+        summary="现行指导。",
+        status="current",
+        memory_metadata={"category": "节奏", "trust_score": 2},
+    ))
+    db_session.commit()
+    result = query_memory(db_session, project.id, memory_type="all", limit=10)
+    keys = [m["key"] for m in result["memories"]]
+    assert "活跃经验" in keys
+    assert "已归档经验" not in keys
+
+
 def test_introspect_log_filtered_from_query(db_session):
     """code-review #4：introspect_log 内部标记行不进记忆查询（不挤占通道配额）。"""
     from app.models import LongformMemory
